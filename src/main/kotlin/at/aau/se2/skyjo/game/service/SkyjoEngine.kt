@@ -17,7 +17,8 @@ import at.aau.se2.skyjo.game.model.PlayerState
 import at.aau.se2.skyjo.game.model.RoundResult
 import at.aau.se2.skyjo.game.model.SkyjoDeckFactory
 import org.springframework.stereotype.Component
-import kotlin.random.Random
+import java.security.SecureRandom
+import kotlin.random.asKotlinRandom
 
 @Component
 class SkyjoEngine {
@@ -200,7 +201,9 @@ class SkyjoEngine {
 
         val protectedTopCard = state.discardPile.topCard()
         val cardsToShuffle = state.discardPile.cards.dropLast(1)
-        val random = state.shuffleSeed?.let { Random(it + state.shuffleCount + 1) } ?: Random.Default
+        val random = SecureRandom().apply {
+            state.shuffleSeed?.let { setSeed(it + state.shuffleCount.toLong() + 1L) }
+        }.asKotlinRandom()
         val shuffledCards = cardsToShuffle.shuffled(random)
 
         return state.copy(
