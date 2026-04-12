@@ -32,7 +32,7 @@ jobs:
       - name: Run Tests
         run: ./gradlew test
 
-      - name: Generate JaCoCo Report
+      - name: Generate Coverage Report
         run: ./gradlew jacocoTestReport
 
       - name: SonarCloud Scan
