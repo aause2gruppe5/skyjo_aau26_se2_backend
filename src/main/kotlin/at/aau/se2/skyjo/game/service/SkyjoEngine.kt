@@ -248,7 +248,7 @@ class SkyjoEngine {
         )
     }
 
-    private fun finishRound(state: GameState): GameState {
+    internal fun finishRound(state: GameState): GameState {
         val finisherPlayerId = state.finisherPlayerId ?: throw InvalidMoveException("cannot finish round without a finisher")
         var updatedDiscardPile = state.discardPile
         val revealedPlayers = state.players.map { player ->
@@ -292,7 +292,7 @@ class SkyjoEngine {
 
     private fun nextPlayerIndex(currentIndex: Int, playerCount: Int): Int = (currentIndex + 1) % playerCount
 
-    private fun determineStartingPlayerIndex(
+    internal fun determineStartingPlayerIndex(
         players: List<PlayerState>,
         initialReveals: Map<String, Set<BoardPosition>>,
     ): Int =
