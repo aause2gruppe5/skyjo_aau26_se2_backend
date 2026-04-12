@@ -6,7 +6,7 @@ import org.junit.jupiter.api.assertThrows
 class PlayerBoardTest {
     private val pos00 = BoardPosition(0, 0) //standart Testposition und Karten
     private val card5 = SkyjoCard(100, 5)
-    private val card10 = SkyjoCard(101, 10)
+
 
     private fun createTestBoard(defaultValue: Int = 0, faceUp: Boolean = false): PlayerBoard { //erstellt vollständiges Board
         val slots = BoardLayout.POSITIONS.associateWith{pos ->
