@@ -21,6 +21,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("io.mockk:mockk:1.14.9")
     testImplementation(kotlin("test"))
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
 }
@@ -52,6 +53,10 @@ sonar {
         property("sonar.projectKey", "aause2gruppe5_skyjo_aau26_se2_backend")
         property("sonar.organization", "aause2gruppe5")
         property("sonar.host.url", "https://sonarcloud.io")
-        property("sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml")
+        property("sonar.sources", "src/main/kotlin")
+        property("sonar.tests", "src/test/kotlin")
+        property("sonar.coverage.jacoco.xmlReportPaths", "${project.layout.buildDirectory.get().asFile}/reports/jacoco/test/jacocoTestReport.xml")
+        property("sonar.kotlin.file.suffixes", ".kt,.kts")
+        property("sonar.sourceEncoding", "UTF-8")
     }
 }
