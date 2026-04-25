@@ -814,12 +814,12 @@ class SkyjoEngineTest {
 
     //Hilfsfunktionen (Mocking)
     private fun mockPosition(col: Int = 0, row: Int = 0) = BoardPosition(col, row)
-    private fun mockCard(id: Int = 1, value: Int = 1) = SkyjoCard(id, value)
+    private fun mockCard(id: Int = 1, value: Int = 1) = SkyjoCard.NumberCard(id, value)
     private fun mockPlayer(id: String = "p1", board: PlayerBoard = mockPlayerBoard()) = PlayerState(id, board)
     private fun mockPlayerBoard(defaultValue: Int = 0, faceUp: Boolean = false): PlayerBoard {
         val slots = BoardLayout.POSITIONS.associateWith{pos ->
             val uniqueId = pos.row * BoardLayout.COLUMNS + pos.column
-            BoardSlot.Occupied(SkyjoCard(id = uniqueId, defaultValue), faceUp)
+            BoardSlot.Occupied(SkyjoCard.NumberCard(id = uniqueId, defaultValue), faceUp)
         }
         return PlayerBoard(slots)
     }
@@ -829,7 +829,7 @@ class SkyjoEngineTest {
 
         val slots = BoardLayout.POSITIONS.mapIndexed { index, pos ->
             val uniqueId = pos.row * BoardLayout.COLUMNS + pos.column
-            pos to BoardSlot.Occupied(SkyjoCard(id = uniqueId, value = cardValues[index]), faceUp = true)
+            pos to BoardSlot.Occupied(SkyjoCard.NumberCard(id = uniqueId, value = cardValues[index]), faceUp = true)
         }.toMap()
         return PlayerBoard(slots)
     }
@@ -837,7 +837,7 @@ class SkyjoEngineTest {
         val slots = BoardLayout.POSITIONS.associateWith { pos ->
             val value = positionValues[pos] ?: 0 // Nimm den definierten Wert oder 0
             val uniqueId = pos.row * BoardLayout.COLUMNS + pos.column
-            BoardSlot.Occupied(SkyjoCard(id = uniqueId, value = value), faceUp = true)
+            BoardSlot.Occupied(SkyjoCard.NumberCard(id = uniqueId, value = value), faceUp = true)
         }
         return PlayerBoard(slots)
     }
@@ -849,7 +849,7 @@ class SkyjoEngineTest {
             if (clear) {
                 BoardSlot.Cleared
             }else {
-                BoardSlot.Occupied(SkyjoCard(id = uniqueId, uniqueVal), faceUp)
+                BoardSlot.Occupied(SkyjoCard.NumberCard(id = uniqueId, uniqueVal), faceUp)
             }
         }
         return PlayerBoard(slots)
@@ -860,9 +860,9 @@ class SkyjoEngineTest {
             val uniqueVal = pos.row + pos.column
             val close = pos.column == 0 && pos.row == 0
             if (close) {
-                BoardSlot.Occupied(SkyjoCard(id = uniqueId, uniqueVal), faceUp = false)
+                BoardSlot.Occupied(SkyjoCard.NumberCard(id = uniqueId, uniqueVal), faceUp = false)
             }else {
-                BoardSlot.Occupied(SkyjoCard(id = uniqueId, uniqueVal), faceUp)
+                BoardSlot.Occupied(SkyjoCard.NumberCard(id = uniqueId, uniqueVal), faceUp)
             }
         }
         return PlayerBoard(slots)

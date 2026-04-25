@@ -6,7 +6,7 @@ class BoardSlotTest {
 
     @Test
     fun occupiedAndFaceUpTrue(){
-        val card = SkyjoCard(101, 12) //dummyKarte
+        val card = SkyjoCard.NumberCard(101, 12) //dummyKarte
         val slot = BoardSlot.Occupied(card, true)
 
         assertEquals(card, slot.card)
@@ -15,7 +15,7 @@ class BoardSlotTest {
 
     @Test
     fun occupiedAndFaceUpFalse(){
-        val card = SkyjoCard(102, -2)
+        val card = SkyjoCard.NumberCard(102, -2)
         val slot = BoardSlot.Occupied(card, false)
 
         assertEquals(card, slot.card)
@@ -24,8 +24,8 @@ class BoardSlotTest {
 
     @Test
     fun occupiedSlotsDifferentIdSameValue(){
-        val card1 = SkyjoCard(10, 1)
-        val card2 = SkyjoCard(11, 1)
+        val card1 = SkyjoCard.NumberCard(10, 1)
+        val card2 = SkyjoCard.NumberCard(11, 1)
 
         val slot1 = BoardSlot.Occupied(card1, true)
         val slot2 = BoardSlot.Occupied(card2, true)
@@ -36,7 +36,7 @@ class BoardSlotTest {
 
     @Test
     fun occupiedSlotCardChangesFaceUp(){
-        val card1 = SkyjoCard(10, 1)
+        val card1 = SkyjoCard.NumberCard(10, 1)
         val stateBeforeTurn = BoardSlot.Occupied(card1, false)
         val stateAfterTurn = BoardSlot.Occupied(card1, true)
 

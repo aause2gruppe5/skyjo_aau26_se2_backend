@@ -14,7 +14,7 @@ class SkyjoDeckFactoryTest {
     fun cardDistributionIsCorrect(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
         val cards = drawPile.cards
-        val counts = cards.groupingBy { it.value }.eachCount()
+        val counts = cards.groupingBy { it.scoreValue() }.eachCount()
 
         assertEquals(5, counts[-2])
         assertEquals(10, counts[-1])

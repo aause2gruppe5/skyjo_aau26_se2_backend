@@ -4,6 +4,7 @@ import at.aau.se2.skyjo.game.model.BoardLayout
 import at.aau.se2.skyjo.game.model.BoardPosition
 import at.aau.se2.skyjo.game.model.BoardSlot
 import at.aau.se2.skyjo.game.model.GameState
+import at.aau.se2.skyjo.game.model.scoreValue
 import at.aau.se2.skyjo.game.service.SkyjoEngine
 
 fun main() {
@@ -40,10 +41,10 @@ private fun printState(label: String, state: GameState) {
     println(label)
     println("Phase: ${state.phase}")
     println("Aktiver Spieler: ${state.currentPlayerId}")
-    println("Gezogene Karte: ${state.drawnCard?.value ?: "-"}")
+    println("Gezogene Karte: ${state.drawnCard?.scoreValue() ?: "-"}")
     println("Ziehquelle: ${state.drawSource ?: "-"}")
     println("Draw pile size: ${state.drawPile.size}")
-    println("Discard pile top card: ${state.discardPile.topCard().value}")
+    println("Discard pile top card: ${state.discardPile.topCard().scoreValue()}")
     println("Final turns remaining: ${state.finalTurnsRemaining}")
     println()
 
@@ -56,7 +57,7 @@ private fun printState(label: String, state: GameState) {
                     is BoardSlot.Cleared -> "XX"
                     is BoardSlot.Occupied -> {
                         val prefix = if (slot.faceUp) "O" else "X"
-                        "$prefix${slot.card.value}"
+                        "$prefix${slot.card.scoreValue()}"
                     }
                 }
             }

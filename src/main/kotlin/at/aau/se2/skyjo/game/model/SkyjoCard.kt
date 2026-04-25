@@ -14,3 +14,8 @@ sealed interface SkyjoCard {
         ) : ActionCard
     }
 }
+fun SkyjoCard.scoreValue(): Int =
+    when (this) {
+        is SkyjoCard.NumberCard -> value
+        is SkyjoCard.ActionCard -> 0
+    }

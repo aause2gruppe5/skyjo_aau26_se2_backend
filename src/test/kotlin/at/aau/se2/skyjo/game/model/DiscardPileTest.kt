@@ -14,8 +14,8 @@ class DiscardPileTest {
 
     @Test
     fun topCardValid(){
-        val card1 = SkyjoCard(1, -2)
-        val card2 = SkyjoCard(2, -2)
+        val card1 = SkyjoCard.NumberCard(1, -2)
+        val card2 = SkyjoCard.NumberCard(2, -2)
         val pile = DiscardPile(listOf(card1, card2))
         val top = pile.topCard()
 
@@ -33,8 +33,8 @@ class DiscardPileTest {
 
     @Test
     fun takeTopValid(){
-        val card1 = SkyjoCard(1, -2)
-        val card2 = SkyjoCard(2, -2)
+        val card1 = SkyjoCard.NumberCard(1, -2)
+        val card2 = SkyjoCard.NumberCard(2, -2)
         val pile = DiscardPile(listOf(card1, card2))
         val top = pile.takeTop()
 
@@ -53,9 +53,9 @@ class DiscardPileTest {
 
     @Test
     fun addCard(){
-        val card = SkyjoCard(1, -2)
+        val card = SkyjoCard.NumberCard(1, -2)
         val pile = DiscardPile(listOf(card))
-        val newCard = SkyjoCard(2, -2)
+        val newCard = SkyjoCard.NumberCard(2, -2)
         val newPile = pile.add(newCard)
 
         assertEquals(1, pile.size)
@@ -65,9 +65,9 @@ class DiscardPileTest {
 
     @Test
     fun addSeveralCards(){
-        val initialCard = SkyjoCard(1, -2)
+        val initialCard = SkyjoCard.NumberCard(1, -2)
         val pile = DiscardPile(listOf(initialCard))
-        val newCards = listOf(SkyjoCard(2, 6), SkyjoCard(3, 12))
+        val newCards = listOf(SkyjoCard.NumberCard(2, 6), SkyjoCard.NumberCard(3, 12))
         val newPile = pile.addAll(newCards)
 
         assertEquals(3, newPile.size)

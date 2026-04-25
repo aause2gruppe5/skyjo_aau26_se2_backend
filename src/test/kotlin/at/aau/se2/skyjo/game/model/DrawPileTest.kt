@@ -14,8 +14,8 @@ class DrawPileTest {
 
     @Test
     fun drawValid(){
-        val card1 = SkyjoCard(1, 2)
-        val card2 = SkyjoCard(2, 10)
+        val card1 = SkyjoCard.NumberCard(1, 2)
+        val card2 = SkyjoCard.NumberCard(2, 10)
         val pile = DrawPile(listOf(card1, card2))
         val result = pile.draw()
 
