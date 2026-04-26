@@ -15,7 +15,9 @@ import at.aau.se2.skyjo.game.model.GameState
 import at.aau.se2.skyjo.game.model.PlayerBoard
 import at.aau.se2.skyjo.game.model.PlayerState
 import at.aau.se2.skyjo.game.model.RoundResult
+import at.aau.se2.skyjo.game.model.SkyjoCard
 import at.aau.se2.skyjo.game.model.SkyjoDeckFactory
+import at.aau.se2.skyjo.game.model.toEffect
 import org.springframework.stereotype.Component
 import kotlin.random.Random
 
@@ -108,14 +110,17 @@ class SkyjoEngine {
             currentPlayer.copy(board = cleanupResult.board),
         )
 
-        return advanceAfterTurn(
+        val stateAfterPlay = applyActionEffectIfNeeded(
             state = playableState.copy(
                 players = updatedPlayers,
                 discardPile = updatedDiscardPile,
                 drawnCard = null,
                 drawSource = null,
             ),
+            card = drawnCard,
         )
+
+        return advanceAfterTurn(stateAfterPlay)
     }
 
     fun discardDrawnCardAndReveal(state: GameState, position: BoardPosition): GameState {
@@ -142,14 +147,17 @@ class SkyjoEngine {
             .add(drawnCard)
             .addAll(cleanupResult.removedCards)
 
-        return advanceAfterTurn(
+        val stateAfterPlay = applyActionEffectIfNeeded(
             state = playableState.copy(
                 players = updatedPlayers,
                 discardPile = updatedDiscardPile,
                 drawnCard = null,
                 drawSource = null,
             ),
+            card = drawnCard,
         )
+
+        return advanceAfterTurn(stateAfterPlay)
     }
 
     private fun validateSetup(
@@ -214,6 +222,12 @@ class SkyjoEngine {
             shuffleCount = state.shuffleCount + 1,
         )
     }
+
+    private fun applyActionEffectIfNeeded(state: GameState, card: SkyjoCard): GameState =
+        when (card) {
+            is SkyjoCard.ActionCard -> card.toEffect().apply(state)
+            is SkyjoCard.NumberCard -> state
+        }
 
     private fun advanceAfterTurn(state: GameState): GameState {
         val currentPlayer = state.currentPlayer()

@@ -12,12 +12,20 @@ object SkyjoDeckFactory {
         }
     }
 
+    private const val ACTION_CARD_COUNT = 10
+
     fun createShuffledDrawPile(seed: Long? = null): DrawPile {
         val random = seed?.let { Random(it) } ?: Random.Default
-        val cards = cardDistribution
+        val numberCards = cardDistribution
             .mapIndexed { index, value ->
                 SkyjoCard.NumberCard(id = index + 1, value = value)
             }
+
+        val actionCards = List(ACTION_CARD_COUNT) { index ->
+            SkyjoCard.ActionCard.Placeholder(id = numberCards.size + index + 1)
+        }
+
+        val cards = (numberCards + actionCards)
             .shuffled(random)
 
         return DrawPile(cards)
