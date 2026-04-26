@@ -4,18 +4,19 @@ import org.junit.jupiter.api.Assertions.*
 
 class SkyjoDeckFactoryTest {
     @Test
-    fun cardDistributionMakes150Cards(){
+    fun cardDistributionMakes160Cards(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
 
-        assertEquals(150, drawPile.cards.size)
+        assertEquals(160, drawPile.cards.size)
     }
 
     @Test
     fun cardDistributionIsCorrect(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
-        val cards = drawPile.cards
+        val cards = drawPile.cards.filterIsInstance<SkyjoCard.NumberCard>()
         val counts = cards.groupingBy { it.scoreValue() }.eachCount()
 
+        assertEquals(150, cards.size)
         assertEquals(5, counts[-2])
         assertEquals(10, counts[-1])
         assertEquals(15, counts[0])
@@ -23,12 +24,20 @@ class SkyjoDeckFactoryTest {
     }
 
     @Test
+    fun cardDistributionContainsActionCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
+        val actionCards = drawPile.cards.filterIsInstance<SkyjoCard.ActionCard>()
+
+        assertEquals(10, actionCards.size)
+    }
+
+    @Test
     fun cardsHaveUniqueId(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
         val ids = drawPile.cards.map{it.id}
 
-        assertEquals(150, ids.toSet().size) //toSet entfehrnt Duplikate
-        assertTrue(ids.all{it in 1..150})
+        assertEquals(160, ids.toSet().size) //toSet entfehrnt Duplikate
+        assertTrue(ids.all{it in 1..160})
     }
 
     @Test
