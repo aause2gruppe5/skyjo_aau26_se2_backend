@@ -23,13 +23,13 @@ class GameController(
         @Payload action: GameActionMessage,
         headerAccessor: SimpMessageHeaderAccessor,
     ) {
-        val sessionId = headerAccessor.sessionId ?: return
+        val playerId = headerAccessor.user?.name ?: return
         runCatching {
-            val updatedState = gameService.processAction(sessionId, action)
-            logger.info("Game action ${action.type} by sessionId=$sessionId")
+            val updatedState = gameService.processAction(playerId, action)
+            logger.info("Game action ${action.type} by $playerId")
             messagingTemplate.convertAndSend("/topic/game", updatedState)
         }.onFailure { e ->
-            messagingTemplate.convertAndSendToUser(sessionId, "/queue/errors", mapOf("message" to e.message))
+            messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
         }
     }
 }

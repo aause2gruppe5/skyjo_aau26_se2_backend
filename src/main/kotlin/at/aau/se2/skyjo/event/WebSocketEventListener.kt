@@ -21,16 +21,15 @@ class WebSocketEventListener(
 
     @EventListener
     fun handleWebSocketConnectListener(event: SessionConnectedEvent) {
-        val sessionId = event.message.headers["simpSessionId"]
-        logger.info("New WebSocket connection: sessionId=$sessionId")
+        logger.info("New WebSocket connection: principal=${event.user?.name}")
     }
 
     @EventListener
     fun handleWebSocketDisconnectListener(event: SessionDisconnectEvent) {
-        val sessionId = event.sessionId
-        if (lobbyService.isPlayerInLobby(sessionId)) {
-            val updatedState = lobbyService.leave(sessionId)
-            logger.info("Player disconnected and removed from lobby: sessionId=$sessionId")
+        val playerId = event.user?.name ?: return
+        if (lobbyService.isPlayerInLobby(playerId)) {
+            val updatedState = lobbyService.leave(playerId)
+            logger.info("Player disconnected and removed from lobby: $playerId")
             messagingTemplate.convertAndSend("/topic/lobby", updatedState.toUpdateMessage())
         }
     }

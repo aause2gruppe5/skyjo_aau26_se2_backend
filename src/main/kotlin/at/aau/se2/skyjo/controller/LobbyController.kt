@@ -27,38 +27,38 @@ class LobbyController(
         @Payload message: PlayerMessage,
         headerAccessor: SimpMessageHeaderAccessor,
     ) {
-        val sessionId = headerAccessor.sessionId ?: return
+        val playerId = headerAccessor.user?.name ?: return
         runCatching {
             // TODO: nickname validation/uniqueness is a placeholder
             val nickname = message.playerName.ifBlank { "Player" }
-            val state = lobbyService.join(sessionId, nickname)
-            logger.info("$nickname (sessionId=$sessionId) joined lobby")
+            val state = lobbyService.join(playerId, nickname)
+            logger.info("$nickname ($playerId) joined lobby")
             messagingTemplate.convertAndSend("/topic/lobby", state.toUpdateMessage())
         }.onFailure { e ->
-            messagingTemplate.convertAndSendToUser(sessionId, "/queue/errors", mapOf("message" to e.message))
+            messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
         }
     }
 
     @MessageMapping("/lobby.leave")
     fun leaveLobby(headerAccessor: SimpMessageHeaderAccessor) {
-        val sessionId = headerAccessor.sessionId ?: return
-        val state = lobbyService.leave(sessionId)
-        logger.info("sessionId=$sessionId left lobby")
+        val playerId = headerAccessor.user?.name ?: return
+        val state = lobbyService.leave(playerId)
+        logger.info("$playerId left lobby")
         messagingTemplate.convertAndSend("/topic/lobby", state.toUpdateMessage())
     }
 
     // TODO: game start logic (initial reveals, round progression) is a placeholder
     @MessageMapping("/game.start")
     fun startGame(headerAccessor: SimpMessageHeaderAccessor) {
-        val sessionId = headerAccessor.sessionId ?: return
+        val playerId = headerAccessor.user?.name ?: return
         runCatching {
-            val lobbyState = lobbyService.startGame(sessionId)
-            logger.info("Game started by host sessionId=$sessionId")
+            val lobbyState = lobbyService.startGame(playerId)
+            logger.info("Game started by host $playerId")
             messagingTemplate.convertAndSend("/topic/lobby", lobbyState.toUpdateMessage())
             val gameState = gameService.startGame(lobbyState.players)
             messagingTemplate.convertAndSend("/topic/game", gameState)
         }.onFailure { e ->
-            messagingTemplate.convertAndSendToUser(sessionId, "/queue/errors", mapOf("message" to e.message))
+            messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
         }
     }
 }
