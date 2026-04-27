@@ -1,8 +1,10 @@
 package at.aau.se2.skyjo.controller
 
+import at.aau.se2.skyjo.model.GameConfig
 import at.aau.se2.skyjo.model.LobbyPlayerInfo
 import at.aau.se2.skyjo.model.LobbyUpdateMessage
 import at.aau.se2.skyjo.model.PlayerMessage
+import at.aau.se2.skyjo.model.StartGameMessage
 import at.aau.se2.skyjo.model.lobby.LobbyState
 import at.aau.se2.skyjo.service.GameService
 import at.aau.se2.skyjo.service.LobbyService
@@ -47,15 +49,19 @@ class LobbyController(
         messagingTemplate.convertAndSend("/topic/lobby", state.toUpdateMessage())
     }
 
-    // TODO: game start logic (initial reveals, round progression) is a placeholder
     @MessageMapping("/game.start")
-    fun startGame(headerAccessor: SimpMessageHeaderAccessor) {
+    fun startGame(
+        @Payload(required = false) message: StartGameMessage?,
+        headerAccessor: SimpMessageHeaderAccessor,
+    ) {
         val playerId = headerAccessor.user?.name ?: return
         runCatching {
             val lobbyState = lobbyService.startGame(playerId)
-            logger.info("Game started by host $playerId")
+            val gameConfig = message?.let { GameConfig(maxRounds = it.maxRounds, targetScore = it.targetScore) }
+                ?: GameConfig()
+            logger.info("Game started by host $playerId (maxRounds=${gameConfig.maxRounds}, targetScore=${gameConfig.targetScore})")
             messagingTemplate.convertAndSend("/topic/lobby", lobbyState.toUpdateMessage())
-            val gameState = gameService.startGame(lobbyState.players)
+            val gameState = gameService.startGame(lobbyState.players, gameConfig)
             messagingTemplate.convertAndSend("/topic/game", gameState)
         }.onFailure { e ->
             messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))

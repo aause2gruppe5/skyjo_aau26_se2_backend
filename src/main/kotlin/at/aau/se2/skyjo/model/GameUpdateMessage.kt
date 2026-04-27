@@ -10,10 +10,14 @@ data class GameUpdateMessage(
     val discardTopCard: CardDto?,
     val drawnCard: CardDto?,
     val roundResult: RoundResult?,
+    val roundNumber: Int,
+    val totalScores: List<PlayerScoreDto>,
+    val gameOver: Boolean,
 )
 
 data class PlayerBoardDto(
     val playerId: String,
+    val nickname: String,
     val board: List<List<BoardSlotDto>>,
 )
 
@@ -32,3 +36,9 @@ data class CardDto(
 )
 
 enum class CardType { NUMBER, ACTION }
+
+data class PlayerScoreDto(
+    val playerId: String,
+    val nickname: String,
+    val totalScore: Int,
+)
