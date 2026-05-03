@@ -16,18 +16,23 @@ object SkyjoDeckFactory {
 
     fun createShuffledDrawPile(seed: Long? = null): DrawPile {
         val random = seed?.let { Random(it) } ?: Random.Default
-        val numberCards = cardDistribution
+        val cards = cardDistribution
             .mapIndexed { index, value ->
                 SkyjoCard.NumberCard(id = index + 1, value = value)
             }
-
-        val actionCards = List(ACTION_CARD_COUNT) { index ->
-            SkyjoCard.ActionCard.Placeholder(id = numberCards.size + index + 1)
-        }
-
-        val cards = (numberCards + actionCards)
             .shuffled(random)
 
         return DrawPile(cards)
+    }
+
+    fun createShuffledActionDrawPile(seed: Long? = null): ActionDrawPile {
+        val random = seed?.let { Random(it + 1L) } ?: Random.Default
+        val numberCardCount = cardDistribution.size
+        val actionCards = List(ACTION_CARD_COUNT) { index ->
+            SkyjoCard.ActionCard.Placeholder(id = numberCardCount + index + 1)
+        }
+            .shuffled(random)
+
+        return ActionDrawPile(actionCards)
     }
 }

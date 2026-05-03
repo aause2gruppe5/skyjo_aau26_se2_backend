@@ -3,10 +3,12 @@ package at.aau.se2.skyjo.game.model
 sealed interface SkyjoCard {
     val id: Int
 
+    sealed interface PlayingCard : SkyjoCard
+
     data class NumberCard(
         override val id: Int,
         val value: Int,
-    ) : SkyjoCard
+    ) : PlayingCard
 
     sealed interface ActionCard : SkyjoCard {
         data class Placeholder(
@@ -14,8 +16,18 @@ sealed interface SkyjoCard {
         ) : ActionCard
     }
 }
-fun SkyjoCard.scoreValue(): Int =
+
+const val ACTION_CARD_SCORE: Int = 10
+
+fun SkyjoCard.PlayingCard.scoreValue(): Int =
     when (this) {
         is SkyjoCard.NumberCard -> value
-        is SkyjoCard.ActionCard -> 0
+    }
+
+fun SkyjoCard.ActionCard.scoreValue(): Int = ACTION_CARD_SCORE
+
+fun SkyjoCard.displayLabel(): String =
+    when (this) {
+        is SkyjoCard.NumberCard -> value.toString()
+        is SkyjoCard.ActionCard.Placeholder -> "Action"
     }
