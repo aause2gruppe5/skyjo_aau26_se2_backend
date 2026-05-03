@@ -31,12 +31,32 @@ class LobbyController(
     ) {
         val playerId = headerAccessor.user?.name ?: return
         runCatching {
-            // TODO: nickname validation/uniqueness is a placeholder
-            val nickname = message.playerName.ifBlank { "Player" }
+            // Den Namen aus der App holen und Leerzeichen am Rand entfernen
+            val rawName = message.playerName.trim()
+
+            // 1. Validierung: Länge prüfen
+            if (rawName.length !in 3..15) {
+                error("Der Nickname muss zwischen 3 und 15 Zeichen lang sein.")
+            }
+
+            // 2. Uniqueness: Prüfen, ob der Name in der Lobby schon existiert
+            val currentState = lobbyService.getState()
+            if (currentState.players.any { it.nickname.equals(rawName, ignoreCase = true) }) {
+                error("Der Nickname '$rawName' ist bereits vergeben.")
+            }
+
+            // Wenn wir hier ankommen, ist der Name gültig und einzigartig!
+            val nickname = rawName
+
+            // Spieler der Lobby hinzufügen
             val state = lobbyService.join(playerId, nickname)
             logger.info("$nickname ($playerId) joined lobby")
+
+            // Alle Clients über das Update informieren
             messagingTemplate.convertAndSend("/topic/lobby", state.toUpdateMessage())
+
         }.onFailure { e ->
+            // Fehler (z.B. Name zu kurz oder vergeben) an den jeweiligen Spieler zurücksenden
             messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
         }
     }
