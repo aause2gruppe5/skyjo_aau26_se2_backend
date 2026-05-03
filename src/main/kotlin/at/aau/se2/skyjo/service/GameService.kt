@@ -61,6 +61,7 @@ class GameService(private val engine: SkyjoEngine) {
                 when (action.source ?: error("source required for DRAW action")) {
                     DrawSource.DECK -> engine.drawFromDeck(state)
                     DrawSource.DISCARD -> engine.takeDiscardCard(state)
+                    DrawSource.ACTION_DECK -> engine.drawFromActionDeck(state)
                 }
             }
             ActionType.REPLACE -> {
