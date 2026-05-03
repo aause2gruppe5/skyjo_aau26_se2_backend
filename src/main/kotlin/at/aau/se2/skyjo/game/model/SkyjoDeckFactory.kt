@@ -12,7 +12,7 @@ object SkyjoDeckFactory {
         }
     }
 
-    private const val ACTION_CARD_COUNT = 10
+    private const val ACTION_CARD_COUNT = 21
 
     fun createShuffledDrawPile(seed: Long? = null): DrawPile {
         val random = seed?.let { Random(it) } ?: Random.Default

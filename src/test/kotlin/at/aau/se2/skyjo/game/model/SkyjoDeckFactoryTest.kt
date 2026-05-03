@@ -7,7 +7,7 @@ class SkyjoDeckFactoryTest {
     fun cardDistributionMakes160Cards(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
 
-        assertEquals(160, drawPile.cards.size)
+        assertEquals(171, drawPile.cards.size)
     }
 
     @Test
@@ -28,7 +28,7 @@ class SkyjoDeckFactoryTest {
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
         val actionCards = drawPile.cards.filterIsInstance<SkyjoCard.ActionCard>()
 
-        assertEquals(10, actionCards.size)
+        assertEquals(21, actionCards.size)
     }
 
     @Test
@@ -36,8 +36,8 @@ class SkyjoDeckFactoryTest {
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
         val ids = drawPile.cards.map{it.id}
 
-        assertEquals(160, ids.toSet().size) //toSet entfehrnt Duplikate
-        assertTrue(ids.all{it in 1..160})
+        assertEquals(171, ids.toSet().size) //toSet entfehrnt Duplikate
+        assertTrue(ids.all{it in 1..171})
     }
 
     @Test
