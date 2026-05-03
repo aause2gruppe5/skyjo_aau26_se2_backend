@@ -4,10 +4,10 @@ import org.junit.jupiter.api.Assertions.*
 
 class SkyjoDeckFactoryTest {
     @Test
-    fun cardDistributionMakes160Cards(){
+    fun cardDistributionMakes150NumberCards(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
 
-        assertEquals(171, drawPile.cards.size)
+        assertEquals(150, drawPile.cards.size)
     }
 
     @Test
@@ -25,7 +25,7 @@ class SkyjoDeckFactoryTest {
 
     @Test
     fun cardDistributionContainsActionCards(){
-        val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
         val actionCards = drawPile.cards.filterIsInstance<SkyjoCard.ActionCard>()
 
         assertEquals(21, actionCards.size)
@@ -34,10 +34,26 @@ class SkyjoDeckFactoryTest {
     @Test
     fun cardsHaveUniqueId(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
-        val ids = drawPile.cards.map{it.id}
+        val actionDrawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+        val ids = (drawPile.cards + actionDrawPile.cards).map{it.id}
 
         assertEquals(171, ids.toSet().size) //toSet entfehrnt Duplikate
         assertTrue(ids.all{it in 1..171})
+    }
+
+    @Test
+    fun numberDrawPileContainsOnlyNumberCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
+
+        assertTrue(drawPile.cards.all { it is SkyjoCard.NumberCard })
+    }
+
+    @Test
+    fun actionDrawPileContainsOnlyActionCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(21, drawPile.cards.size)
+        assertTrue(drawPile.cards.all { it.id in 151..171 })
     }
 
     @Test

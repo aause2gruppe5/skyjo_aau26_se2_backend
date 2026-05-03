@@ -15,6 +15,6 @@ class SkyjoCardTest {
     fun actionCardScoreValueIsZero(){
         val card = SkyjoCard.ActionCard.Placeholder(id = 2)
 
-        assertEquals(0, card.scoreValue())
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
     }
 }
