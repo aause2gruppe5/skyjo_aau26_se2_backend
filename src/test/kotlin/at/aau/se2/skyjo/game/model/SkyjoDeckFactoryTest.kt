@@ -4,63 +4,86 @@ import org.junit.jupiter.api.Assertions.*
 
 class SkyjoDeckFactoryTest {
     @Test
-    fun cardDistributionMakes160Cards(){
-        val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
+    fun numberDrawPileHas150Cards(){
+        val pile = SkyjoDeckFactory.createNumberDrawPile()
 
-        assertEquals(171, drawPile.cards.size)
+        assertEquals(150, pile.cards.size)
     }
 
     @Test
-    fun cardDistributionIsCorrect(){
-        val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
-        val cards = drawPile.cards.filterIsInstance<SkyjoCard.NumberCard>()
-        val counts = cards.groupingBy { it.scoreValue() }.eachCount()
+    fun actionDrawPileHas21Cards(){
+        val pile = SkyjoDeckFactory.createActionDrawPile()
 
-        assertEquals(150, cards.size)
+        assertEquals(21, pile.cards.size)
+    }
+
+    @Test
+    fun numberCardDistributionIsCorrect(){
+        val pile = SkyjoDeckFactory.createNumberDrawPile()
+        val counts = pile.cards.filterIsInstance<SkyjoCard.NumberCard>().groupingBy { it.scoreValue() }.eachCount()
+
+        assertEquals(150, pile.cards.size)
         assertEquals(5, counts[-2])
         assertEquals(10, counts[-1])
         assertEquals(15, counts[0])
-        for (value in 1..12){assertEquals(10, counts[value])}
+        for (value in 1..12){ assertEquals(10, counts[value]) }
     }
 
     @Test
-    fun cardDistributionContainsActionCards(){
-        val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
-        val actionCards = drawPile.cards.filterIsInstance<SkyjoCard.ActionCard>()
+    fun actionDrawPileContainsOnlyActionCards(){
+        val pile = SkyjoDeckFactory.createActionDrawPile()
 
-        assertEquals(21, actionCards.size)
+        assertTrue(pile.cards.all { it is SkyjoCard.ActionCard })
     }
 
     @Test
-    fun cardsHaveUniqueId(){
-        val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
-        val ids = drawPile.cards.map{it.id}
+    fun numberPileCardsHaveUniqueId(){
+        val pile = SkyjoDeckFactory.createNumberDrawPile()
+        val ids = pile.cards.map { it.id }
 
-        assertEquals(171, ids.toSet().size) //toSet entfehrnt Duplikate
-        assertTrue(ids.all{it in 1..171})
+        assertEquals(150, ids.toSet().size)
+        assertTrue(ids.all { it in 1..150 })
     }
 
     @Test
-    fun shuffleWithSameSeed(){
+    fun actionPileCardsHaveUniqueId(){
+        val pile = SkyjoDeckFactory.createActionDrawPile()
+        val ids = pile.cards.map { it.id }
+
+        assertEquals(21, ids.toSet().size)
+        assertTrue(ids.all { it in 151..171 })
+    }
+
+    @Test
+    fun numberPileShuffleWithSameSeed(){
         val seed = 42L
-        val pile1 = SkyjoDeckFactory.createShuffledDrawPile(seed)
-        val pile2 = SkyjoDeckFactory.createShuffledDrawPile(seed)
+        val pile1 = SkyjoDeckFactory.createNumberDrawPile(seed)
+        val pile2 = SkyjoDeckFactory.createNumberDrawPile(seed)
 
         assertEquals(pile1.cards, pile2.cards)
     }
 
     @Test
-    fun shuffleWithDifferentSeed(){
-        val pile1 = SkyjoDeckFactory.createShuffledDrawPile(123L)
-        val pile2 = SkyjoDeckFactory.createShuffledDrawPile(456L)
+    fun actionPileShuffleWithSameSeed(){
+        val seed = 42L
+        val pile1 = SkyjoDeckFactory.createActionDrawPile(seed)
+        val pile2 = SkyjoDeckFactory.createActionDrawPile(seed)
+
+        assertEquals(pile1.cards, pile2.cards)
+    }
+
+    @Test
+    fun numberPileShuffleWithDifferentSeed(){
+        val pile1 = SkyjoDeckFactory.createNumberDrawPile(123L)
+        val pile2 = SkyjoDeckFactory.createNumberDrawPile(456L)
 
         assertNotEquals(pile1.cards, pile2.cards)
     }
 
     @Test
-    fun shuffleWithoutSeed(){
-        val pile1 = SkyjoDeckFactory.createShuffledDrawPile()
-        val pile2 = SkyjoDeckFactory.createShuffledDrawPile()
+    fun numberPileShuffleWithoutSeed(){
+        val pile1 = SkyjoDeckFactory.createNumberDrawPile()
+        val pile2 = SkyjoDeckFactory.createNumberDrawPile()
 
         assertNotEquals(pile1.cards, pile2.cards)
     }

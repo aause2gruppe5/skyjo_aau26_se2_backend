@@ -71,6 +71,8 @@ class SkyjoEngineTest {
             assertThat(state.phase).isEqualTo(GamePhase.AWAITING_DRAW)
             assertThat(state.discardPile.size).isEqualTo(1)
             assertThat(state.shuffleSeed).isEqualTo(seed)
+            assertThat(state.actionDrawPile.size).isEqualTo(21)
+            assertThat(state.drawPile.size).isEqualTo(150 - 2 * 12 - 1)
         }
     }
     @Nested
@@ -106,6 +108,41 @@ class SkyjoEngineTest {
 
             assertThat(exception).hasMessageContaining("cannot draw from deck while phase is")
 
+        }
+    }
+
+    @Nested
+    inner class DrawFromActionDeckTest{
+        @Test
+        fun drawFromActionDeckChangesPhase(){
+            val actionCard = SkyjoCard.ActionCard.Placeholder(id = 151)
+            val initialState = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                actionDrawPile = DrawPile(listOf(actionCard)),
+            )
+            val newState = engine.drawFromActionDeck(initialState)
+
+            assertThat(newState.phase).isEqualTo(GamePhase.AWAITING_REPLACEMENT)
+            assertThat(newState.drawSource).isEqualTo(DrawSource.ACTION_DECK)
+            assertThat(newState.drawnCard).isEqualTo(actionCard)
+            assertThat(newState.actionDrawPile.size).isEqualTo(0)
+        }
+
+        @Test
+        fun drawFromEmptyActionDeckThrows(){
+            val initialState = mockGameState(phase = GamePhase.AWAITING_DRAW, actionDrawPile = DrawPile.empty())
+
+            assertThrows<InvalidMoveException> { engine.drawFromActionDeck(initialState) }
+        }
+
+        @Test
+        fun drawFromActionDeckInWrongPhaseThrows(){
+            val initialState = mockGameState(
+                phase = GamePhase.AWAITING_REPLACEMENT,
+                actionDrawPile = DrawPile(listOf(SkyjoCard.ActionCard.Placeholder(id = 151))),
+            )
+
+            assertThrows<InvalidMoveException> { engine.drawFromActionDeck(initialState) }
         }
     }
 
@@ -872,6 +909,7 @@ class SkyjoEngineTest {
         currentPlayerIndex: Int = 0,
         phase: GamePhase = GamePhase.NOT_STARTED,
         drawPile: DrawPile = DrawPile.empty(),
+        actionDrawPile: DrawPile = DrawPile.empty(),
         discardPile: DiscardPile = DiscardPile.empty(),
         drawnCard: SkyjoCard? = null,
         drawSource: DrawSource? = null,
@@ -884,6 +922,7 @@ class SkyjoEngineTest {
         players = players,
         currentPlayerIndex = currentPlayerIndex,
         drawPile = drawPile,
+        actionDrawPile = actionDrawPile,
         discardPile = discardPile,
         phase = phase,
         drawnCard = drawnCard,
