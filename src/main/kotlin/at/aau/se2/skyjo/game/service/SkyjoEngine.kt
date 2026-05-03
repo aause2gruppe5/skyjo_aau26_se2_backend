@@ -31,14 +31,13 @@ class SkyjoEngine {
     ): GameState {
         validateSetup(playerIds, initialReveals)
 
-        var numberPile = SkyjoDeckFactory.createNumberDrawPile(seed)
-        val actionPile = SkyjoDeckFactory.createActionDrawPile(seed)
+        var drawPile = SkyjoDeckFactory.createShuffledDrawPile(seed)
         val players = playerIds.map { playerId ->
             val cards = buildList {
                 repeat(BoardLayout.POSITIONS.size) {
-                    val drawResult = numberPile.draw()
+                    val drawResult = drawPile.draw()
                     add(drawResult.card)
-                    numberPile = drawResult.remainingPile
+                    drawPile = drawResult.remainingPile
                 }
             }
 
@@ -51,14 +50,13 @@ class SkyjoEngine {
             )
         }
 
-        val openingDiscard = numberPile.draw() // one card gets disposed on game start according to rules
+        val openingDiscard = drawPile.draw() // one card gets disposed on game start according to rules
         val startingPlayerIndex = determineStartingPlayerIndex(players, initialReveals)
 
         return GameState(
             players = players,
             currentPlayerIndex = startingPlayerIndex,
             drawPile = openingDiscard.remainingPile,
-            actionDrawPile = actionPile,
             discardPile = DiscardPile(listOf(openingDiscard.card)),
             phase = GamePhase.AWAITING_DRAW,
             shuffleSeed = seed,
@@ -77,23 +75,6 @@ class SkyjoEngine {
             drawPile = drawResult.remainingPile,
             drawnCard = drawResult.card,
             drawSource = DrawSource.DECK,
-            phase = GamePhase.AWAITING_REPLACEMENT,
-        )
-    }
-
-    fun drawFromActionDeck(state: GameState): GameState {
-        val playableState = requireActiveRound(state)
-        if (playableState.phase != GamePhase.AWAITING_DRAW && playableState.phase != GamePhase.FINAL_TURNS) {
-            throw InvalidMoveException("cannot draw from action deck while phase is ${playableState.phase}")
-        }
-        if (playableState.actionDrawPile.size == 0) {
-            throw InvalidMoveException("action draw pile is empty")
-        }
-        val drawResult = playableState.actionDrawPile.draw()
-        return playableState.copy(
-            actionDrawPile = drawResult.remainingPile,
-            drawnCard = drawResult.card,
-            drawSource = DrawSource.ACTION_DECK,
             phase = GamePhase.AWAITING_REPLACEMENT,
         )
     }
@@ -144,7 +125,7 @@ class SkyjoEngine {
 
     fun discardDrawnCardAndReveal(state: GameState, position: BoardPosition): GameState {
         val playableState = requireAwaitingReplacement(state)
-        if (playableState.drawSource == DrawSource.DISCARD) {
+        if (playableState.drawSource != DrawSource.DECK) {
             throw InvalidMoveException("discard and reveal is only allowed after drawing from the deck")
         }
 

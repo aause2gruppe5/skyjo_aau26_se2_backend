@@ -4,7 +4,6 @@ data class GameState(
     val players: List<PlayerState> = emptyList(),
     val currentPlayerIndex: Int = 0,
     val drawPile: DrawPile = DrawPile.empty(),
-    val actionDrawPile: DrawPile = DrawPile.empty(),
     val discardPile: DiscardPile = DiscardPile.empty(),
     val phase: GamePhase = GamePhase.NOT_STARTED,
     val drawnCard: SkyjoCard? = null,
