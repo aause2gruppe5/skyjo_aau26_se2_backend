@@ -4,7 +4,7 @@ import at.aau.se2.skyjo.game.model.BoardLayout
 import at.aau.se2.skyjo.game.model.BoardPosition
 import at.aau.se2.skyjo.game.model.BoardSlot
 import at.aau.se2.skyjo.game.model.GameState
-import at.aau.se2.skyjo.game.model.scoreValue
+import at.aau.se2.skyjo.game.model.displayLabel
 import at.aau.se2.skyjo.game.service.SkyjoEngine
 
 fun main() {
@@ -34,6 +34,9 @@ fun main() {
     val replacePosition = firstOccupiedPosition(state)
     state = engine.replaceDrawnCard(state, replacePosition)
     printState("Nach replaceDrawnCard($replacePosition)", state)
+
+    state = engine.drawVisibleActionCard(state, actionCardIndex = 0)
+    printState("Nach drawVisibleActionCard(0)", state)
 }
 
 private fun printState(label: String, state: GameState) {
@@ -41,10 +44,13 @@ private fun printState(label: String, state: GameState) {
     println(label)
     println("Phase: ${state.phase}")
     println("Aktiver Spieler: ${state.currentPlayerId}")
-    println("Gezogene Karte: ${state.drawnCard?.scoreValue() ?: "-"}")
+    println("Gezogene Karte: ${state.drawnCard?.displayLabel() ?: "-"}")
     println("Ziehquelle: ${state.drawSource ?: "-"}")
     println("Draw pile size: ${state.drawPile.size}")
-    println("Discard pile top card: ${state.discardPile.topCard().scoreValue()}")
+    println("Discard pile top card: ${state.discardPile.topCard().displayLabel()}")
+    println("Action draw pile size: ${state.actionDrawPile.size}")
+    println("Visible action cards: ${state.visibleActionCards.joinToString { it.displayLabel() }}")
+    println("Action discard top card: ${state.actionDiscardPile.topCard().displayLabel()}")
     println("Final turns remaining: ${state.finalTurnsRemaining}")
     println()
 
@@ -57,13 +63,14 @@ private fun printState(label: String, state: GameState) {
                     is BoardSlot.Cleared -> "XX"
                     is BoardSlot.Occupied -> {
                         val prefix = if (slot.faceUp) "O" else "X"
-                        "$prefix${slot.card.scoreValue()}"
+                        "$prefix${slot.card.displayLabel()}"
                     }
                 }
             }
             println(line)
         }
-        println("Raw score: ${player.board.rawScore()}")
+        println("Action cards: ${player.actionCards.joinToString { it.displayLabel() }}")
+        println("Raw score: ${player.rawScore()}")
         println()
     }
 

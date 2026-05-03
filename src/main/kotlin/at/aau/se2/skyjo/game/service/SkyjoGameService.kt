@@ -41,6 +41,30 @@ class SkyjoGameService(
     }
 
     @Synchronized
+    fun drawVisibleActionCard(actionCardIndex: Int): GameState {
+        currentState = engine.drawVisibleActionCard(currentState, actionCardIndex)
+        return currentState
+    }
+
+    @Synchronized
+    fun drawActionCardFromDeck(): GameState {
+        currentState = engine.drawActionCardFromDeck(currentState)
+        return currentState
+    }
+
+    @Synchronized
+    fun discardActionCard(actionCardIndex: Int): GameState {
+        currentState = engine.discardActionCard(currentState, actionCardIndex)
+        return currentState
+    }
+
+    @Synchronized
+    fun playActionCard(actionCardIndex: Int): GameState {
+        currentState = engine.playActionCard(currentState, actionCardIndex)
+        return currentState
+    }
+
+    @Synchronized
     fun replaceDrawnCard(position: BoardPosition): GameState {
         currentState = engine.replaceDrawnCard(currentState, position)
         return currentState

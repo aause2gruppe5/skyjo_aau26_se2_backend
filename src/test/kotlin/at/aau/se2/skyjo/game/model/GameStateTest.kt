@@ -8,7 +8,7 @@ class GameStateTest {
     object TestData{ //erstellt Players mit Boards um Korrekt testen zu können
         private var cardIdCounter = 0
 
-        fun createCard(id: Int = cardIdCounter++, value: Int = 5): SkyjoCard {return SkyjoCard.NumberCard(id = id, value = value) }
+        fun createCard(id: Int = cardIdCounter++, value: Int = 5): SkyjoCard.PlayingCard {return SkyjoCard.NumberCard(id = id, value = value) }
         fun createBoard(fillWith: (BoardPosition) -> BoardSlot = {_ -> BoardSlot.Occupied(createCard(), faceUp = false)}) : PlayerBoard{
             val slots = BoardLayout.POSITIONS.associateWith{pos -> fillWith(pos)}
             return PlayerBoard(slots)

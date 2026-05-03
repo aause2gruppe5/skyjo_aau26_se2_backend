@@ -873,7 +873,7 @@ class SkyjoEngineTest {
         phase: GamePhase = GamePhase.NOT_STARTED,
         drawPile: DrawPile = DrawPile.empty(),
         discardPile: DiscardPile = DiscardPile.empty(),
-        drawnCard: SkyjoCard? = null,
+        drawnCard: SkyjoCard.PlayingCard? = null,
         drawSource: DrawSource? = null,
         finisherPlayerId: String? = null,
         finalTurnsRemaining: Int = 0,
