@@ -70,6 +70,9 @@ class SkyjoEngineTest {
             assertThat(state.players).hasSize(2)
             assertThat(state.phase).isEqualTo(GamePhase.AWAITING_DRAW)
             assertThat(state.discardPile.size).isEqualTo(1)
+            assertThat(state.visibleActionCards).hasSize(4)
+            assertThat(state.actionDiscardPile.size).isEqualTo(1)
+            assertThat(state.actionDrawPile.size).isEqualTo(16)
             assertThat(state.shuffleSeed).isEqualTo(seed)
         }
     }
@@ -141,6 +144,132 @@ class SkyjoEngineTest {
 
             val exception = assertThrows<InvalidMoveException>{engine.takeDiscardCard(initialState)}
             assertThat(exception).hasMessageContaining("cannot take discard card while phase is")
+        }
+    }
+
+    @Nested
+    inner class ActionCardDrawTest {
+        @Test
+        fun drawVisibleActionCardAddsCardToPlayerAndRefillsVisibleSlot(){
+            val visibleCard = actionCard(151)
+            val refillCard = actionCard(152)
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                visibleActionCards = listOf(visibleCard),
+                actionDrawPile = ActionDrawPile(listOf(refillCard)),
+            )
+
+            val result = engine.drawVisibleActionCard(state, 0)
+
+            assertThat(result.players[0].actionCards).containsExactly(visibleCard)
+            assertThat(result.visibleActionCards).containsExactly(refillCard)
+            assertThat(result.actionDrawPile.size).isEqualTo(0)
+            assertThat(result.phase).isEqualTo(GamePhase.AWAITING_DRAW)
+            assertThat(result.currentPlayerIndex).isEqualTo(1)
+        }
+
+        @Test
+        fun drawVisibleActionCardRemovesVisibleSlotWhenActionDrawPileIsEmpty(){
+            val visibleCard = actionCard(151)
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                visibleActionCards = listOf(visibleCard),
+                actionDrawPile = ActionDrawPile.empty(),
+            )
+
+            val result = engine.drawVisibleActionCard(state, 0)
+
+            assertThat(result.players[0].actionCards).containsExactly(visibleCard)
+            assertThat(result.visibleActionCards).isEmpty()
+        }
+
+        @Test
+        fun drawVisibleActionCardRejectsUnavailableIndex(){
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                visibleActionCards = listOf(actionCard(151)),
+            )
+
+            val exception = assertThrows<InvalidMoveException> {
+                engine.drawVisibleActionCard(state, 1)
+            }
+
+            assertThat(exception).hasMessageContaining("visible action card index 1 is not available")
+        }
+
+        @Test
+        fun drawActionCardFromDeckAddsCardToPlayer(){
+            val actionCard = actionCard(151)
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                actionDrawPile = ActionDrawPile(listOf(actionCard)),
+            )
+
+            val result = engine.drawActionCardFromDeck(state)
+
+            assertThat(result.players[0].actionCards).containsExactly(actionCard)
+            assertThat(result.actionDrawPile.size).isEqualTo(0)
+            assertThat(result.currentPlayerIndex).isEqualTo(1)
+        }
+
+        @Test
+        fun drawActionCardFromDeckRejectsEmptyActionDrawPile(){
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                actionDrawPile = ActionDrawPile.empty(),
+            )
+
+            val exception = assertThrows<InvalidMoveException> {
+                engine.drawActionCardFromDeck(state)
+            }
+
+            assertThat(exception).hasMessageContaining("action draw pile is empty")
+        }
+    }
+
+    @Nested
+    inner class PlayOrDiscardActionCardTest {
+        @Test
+        fun discardActionCardMovesCardFromPlayerToActionDiscardPile(){
+            val actionCard = actionCard(151)
+            val player = mockPlayer("p1").copy(actionCards = listOf(actionCard))
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(player, mockPlayer("p2")),
+            )
+
+            val result = engine.discardActionCard(state, 0)
+
+            assertThat(result.players[0].actionCards).isEmpty()
+            assertThat(result.actionDiscardPile.topCard()).isEqualTo(actionCard)
+            assertThat(result.currentPlayerIndex).isEqualTo(1)
+        }
+
+        @Test
+        fun playActionCardMovesCardFromPlayerToActionDiscardPile(){
+            val actionCard = actionCard(151)
+            val player = mockPlayer("p1").copy(actionCards = listOf(actionCard))
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(player, mockPlayer("p2")),
+            )
+
+            val result = engine.playActionCard(state, 0)
+
+            assertThat(result.players[0].actionCards).isEmpty()
+            assertThat(result.actionDiscardPile.topCard()).isEqualTo(actionCard)
+            assertThat(result.currentPlayerIndex).isEqualTo(1)
+        }
+
+        @Test
+        fun playActionCardRejectsUnavailableIndex(){
+            val state = mockGameState(phase = GamePhase.AWAITING_DRAW)
+
+            val exception = assertThrows<InvalidMoveException> {
+                engine.playActionCard(state, 0)
+            }
+
+            assertThat(exception).hasMessageContaining("action card index 0 is not available")
         }
     }
 
@@ -815,6 +944,7 @@ class SkyjoEngineTest {
     //Hilfsfunktionen (Mocking)
     private fun mockPosition(col: Int = 0, row: Int = 0) = BoardPosition(col, row)
     private fun mockCard(id: Int = 1, value: Int = 1) = SkyjoCard.NumberCard(id, value)
+    private fun actionCard(id: Int = 151) = SkyjoCard.ActionCard.Placeholder(id)
     private fun mockPlayer(id: String = "p1", board: PlayerBoard = mockPlayerBoard()) = PlayerState(id, board)
     private fun mockPlayerBoard(defaultValue: Int = 0, faceUp: Boolean = false): PlayerBoard {
         val slots = BoardLayout.POSITIONS.associateWith{pos ->
@@ -873,6 +1003,9 @@ class SkyjoEngineTest {
         phase: GamePhase = GamePhase.NOT_STARTED,
         drawPile: DrawPile = DrawPile.empty(),
         discardPile: DiscardPile = DiscardPile.empty(),
+        actionDrawPile: ActionDrawPile = ActionDrawPile.empty(),
+        visibleActionCards: List<SkyjoCard.ActionCard> = emptyList(),
+        actionDiscardPile: ActionDiscardPile = ActionDiscardPile.empty(),
         drawnCard: SkyjoCard.PlayingCard? = null,
         drawSource: DrawSource? = null,
         finisherPlayerId: String? = null,
@@ -885,6 +1018,9 @@ class SkyjoEngineTest {
         currentPlayerIndex = currentPlayerIndex,
         drawPile = drawPile,
         discardPile = discardPile,
+        actionDrawPile = actionDrawPile,
+        visibleActionCards = visibleActionCards,
+        actionDiscardPile = actionDiscardPile,
         phase = phase,
         drawnCard = drawnCard,
         drawSource = drawSource,

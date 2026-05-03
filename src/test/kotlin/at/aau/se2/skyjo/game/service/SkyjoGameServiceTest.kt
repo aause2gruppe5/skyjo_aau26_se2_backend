@@ -123,4 +123,70 @@ class SkyjoGameServiceTest {
         assertEquals(stateAfterReplace, service.getGameState())
         verify(exactly = 1) { engine.replaceDrawnCard(stateBeforeReplace, position) }
     }
+
+    @Test
+    fun drawVisibleActionCardReturnsNewState() {
+        val stateBeforeDraw = GameState(phase = GamePhase.AWAITING_DRAW)
+        val stateAfterDraw = GameState(phase = GamePhase.AWAITING_DRAW, visibleActionCards = listOf(actionCard(151)))
+
+        every { engine.startGame(any(), any(), any()) } returns stateBeforeDraw
+        service.startGame(emptyList(), emptyMap())
+        every { engine.drawVisibleActionCard(stateBeforeDraw, 0) } returns stateAfterDraw
+
+        val result = service.drawVisibleActionCard(0)
+
+        assertEquals(stateAfterDraw, result)
+        assertEquals(stateAfterDraw, service.getGameState())
+        verify(exactly = 1) { engine.drawVisibleActionCard(stateBeforeDraw, 0) }
+    }
+
+    @Test
+    fun drawActionCardFromDeckReturnsNewState() {
+        val stateBeforeDraw = GameState(phase = GamePhase.AWAITING_DRAW)
+        val stateAfterDraw = GameState(phase = GamePhase.AWAITING_DRAW, actionDrawPile = ActionDrawPile.empty())
+
+        every { engine.startGame(any(), any(), any()) } returns stateBeforeDraw
+        service.startGame(emptyList(), emptyMap())
+        every { engine.drawActionCardFromDeck(stateBeforeDraw) } returns stateAfterDraw
+
+        val result = service.drawActionCardFromDeck()
+
+        assertEquals(stateAfterDraw, result)
+        assertEquals(stateAfterDraw, service.getGameState())
+        verify(exactly = 1) { engine.drawActionCardFromDeck(stateBeforeDraw) }
+    }
+
+    @Test
+    fun discardActionCardReturnsNewState() {
+        val stateBeforeDiscard = GameState(phase = GamePhase.AWAITING_DRAW)
+        val stateAfterDiscard = GameState(phase = GamePhase.AWAITING_DRAW, actionDiscardPile = ActionDiscardPile(listOf(actionCard(151))))
+
+        every { engine.startGame(any(), any(), any()) } returns stateBeforeDiscard
+        service.startGame(emptyList(), emptyMap())
+        every { engine.discardActionCard(stateBeforeDiscard, 0) } returns stateAfterDiscard
+
+        val result = service.discardActionCard(0)
+
+        assertEquals(stateAfterDiscard, result)
+        assertEquals(stateAfterDiscard, service.getGameState())
+        verify(exactly = 1) { engine.discardActionCard(stateBeforeDiscard, 0) }
+    }
+
+    @Test
+    fun playActionCardReturnsNewState() {
+        val stateBeforePlay = GameState(phase = GamePhase.AWAITING_DRAW)
+        val stateAfterPlay = GameState(phase = GamePhase.AWAITING_DRAW, actionDiscardPile = ActionDiscardPile(listOf(actionCard(151))))
+
+        every { engine.startGame(any(), any(), any()) } returns stateBeforePlay
+        service.startGame(emptyList(), emptyMap())
+        every { engine.playActionCard(stateBeforePlay, 0) } returns stateAfterPlay
+
+        val result = service.playActionCard(0)
+
+        assertEquals(stateAfterPlay, result)
+        assertEquals(stateAfterPlay, service.getGameState())
+        verify(exactly = 1) { engine.playActionCard(stateBeforePlay, 0) }
+    }
+
+    private fun actionCard(id: Int) = SkyjoCard.ActionCard.Placeholder(id)
 }

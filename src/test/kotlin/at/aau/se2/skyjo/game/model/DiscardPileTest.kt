@@ -75,4 +75,42 @@ class DiscardPileTest {
         assertEquals(listOf(1,2,3), newPile.cards.map{it.id})
     }
 
+    @Test
+    fun actionDiscardPileEmpty(){
+        val pile = ActionDiscardPile.empty()
+
+        assertEquals(0, pile.size)
+        assertTrue(pile.cards.isEmpty())
+    }
+
+    @Test
+    fun actionDiscardPileTopCardValid(){
+        val card1 = SkyjoCard.ActionCard.Placeholder(151)
+        val card2 = SkyjoCard.ActionCard.Placeholder(152)
+        val pile = ActionDiscardPile(listOf(card1, card2))
+
+        assertEquals(card2, pile.topCard())
+        assertEquals(2, pile.size)
+    }
+
+    @Test
+    fun actionDiscardPileTopCardInvalid(){
+        val emptyPile = ActionDiscardPile.empty()
+        val exception = assertThrows<IllegalArgumentException> { emptyPile.topCard() }
+
+        assertEquals("action discard pile is empty", exception.message)
+    }
+
+    @Test
+    fun actionDiscardPileAddCard(){
+        val card1 = SkyjoCard.ActionCard.Placeholder(151)
+        val card2 = SkyjoCard.ActionCard.Placeholder(152)
+        val pile = ActionDiscardPile(listOf(card1))
+        val newPile = pile.add(card2)
+
+        assertEquals(1, pile.size)
+        assertEquals(2, newPile.size)
+        assertEquals(card2, newPile.topCard())
+    }
+
 }
