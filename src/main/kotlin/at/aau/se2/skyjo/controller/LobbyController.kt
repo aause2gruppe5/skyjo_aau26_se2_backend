@@ -34,15 +34,14 @@ class LobbyController(
             // Den Namen aus der App holen und Leerzeichen am Rand entfernen
             val rawName = message.playerName.trim()
 
-            // 1. Validierung: Länge prüfen
-            if (rawName.length !in 3..15) {
-                error("Der Nickname muss zwischen 3 und 15 Zeichen lang sein.")
+            if (rawName.length !in 1..15) {
+                error("Name has to be between 1 and 15 characters.")
             }
 
-            // 2. Uniqueness: Prüfen, ob der Name in der Lobby schon existiert
+            // Uniqueness: Prüfen, ob der Name in der Lobby schon existiert
             val currentState = lobbyService.getState()
             if (currentState.players.any { it.nickname.equals(rawName, ignoreCase = true) }) {
-                error("Der Nickname '$rawName' ist bereits vergeben.")
+                error("Nickname '$rawName' is already in use")
             }
 
             // Wenn wir hier ankommen, ist der Name gültig und einzigartig!
