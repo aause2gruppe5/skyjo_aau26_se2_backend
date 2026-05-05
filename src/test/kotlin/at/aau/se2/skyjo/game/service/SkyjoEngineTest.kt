@@ -254,7 +254,7 @@ class SkyjoEngineTest {
                 players = listOf(player, mockPlayer("p2")),
             )
 
-            val result = engine.playActionCard(state, 0)
+            val result = engine.playActionCard(state, PlayActionCardCommand(actionCardIndex = 0))
 
             assertThat(result.players[0].actionCards).isEmpty()
             assertThat(result.actionDiscardPile.topCard()).isEqualTo(actionCard)
@@ -266,7 +266,7 @@ class SkyjoEngineTest {
             val state = mockGameState(phase = GamePhase.AWAITING_DRAW)
 
             val exception = assertThrows<InvalidMoveException> {
-                engine.playActionCard(state, 0)
+                engine.playActionCard(state, PlayActionCardCommand(actionCardIndex = 0))
             }
 
             assertThat(exception).hasMessageContaining("action card index 0 is not available")

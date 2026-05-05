@@ -15,6 +15,6 @@ class ActionCardEffectTest {
     fun placeholderActionCardEffectKeepsStateUnchanged(){
         val state = GameState()
 
-        assertSame(state, ActionCardEffect.Placeholder.apply(state))
+        assertSame(state, ActionCardEffect.Placeholder.apply(state, ActionCardParameters.None))
     }
 }

@@ -5,6 +5,7 @@ import at.aau.se2.skyjo.game.error.InvalidGameSetupException
 import at.aau.se2.skyjo.game.error.InvalidMoveException
 import at.aau.se2.skyjo.game.error.RoundAlreadyFinishedException
 import at.aau.se2.skyjo.game.model.ActionDiscardPile
+import at.aau.se2.skyjo.game.model.ActionCardParameters
 import at.aau.se2.skyjo.game.model.ActionDrawPile
 import at.aau.se2.skyjo.game.model.BoardLayout
 import at.aau.se2.skyjo.game.model.BoardPosition
@@ -16,6 +17,7 @@ import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
 import at.aau.se2.skyjo.game.model.PlayerBoard
 import at.aau.se2.skyjo.game.model.PlayerState
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.RoundResult
 import at.aau.se2.skyjo.game.model.SkyjoCard
 import at.aau.se2.skyjo.game.model.SkyjoDeckFactory
@@ -154,8 +156,13 @@ class SkyjoEngine {
     fun discardActionCard(state: GameState, actionCardIndex: Int): GameState =
         playOrDiscardActionCard(state, actionCardIndex, applyEffect = false)
 
-    fun playActionCard(state: GameState, actionCardIndex: Int): GameState =
-        playOrDiscardActionCard(state, actionCardIndex, applyEffect = true)
+    fun playActionCard(state: GameState, command: PlayActionCardCommand): GameState =
+        playOrDiscardActionCard(
+            state = state,
+            actionCardIndex = command.actionCardIndex,
+            applyEffect = true,
+            parameters = command.parameters,
+        )
 
     fun replaceDrawnCard(state: GameState, position: BoardPosition): GameState {
         val playableState = requireAwaitingReplacement(state)
@@ -309,6 +316,7 @@ class SkyjoEngine {
         state: GameState,
         actionCardIndex: Int,
         applyEffect: Boolean,
+        parameters: ActionCardParameters = ActionCardParameters.None,
     ): GameState {
         val playableState = requireReadyForTurnAction(state, "play or discard an action card")
         val currentPlayer = playableState.currentPlayer()
@@ -330,7 +338,7 @@ class SkyjoEngine {
             drawSource = null,
         )
         val stateAfterAction = if (applyEffect) {
-            actionCard.toEffect().apply(stateAfterDiscard)
+            actionCard.toEffect().apply(stateAfterDiscard, parameters)
         } else {
             stateAfterDiscard
         }

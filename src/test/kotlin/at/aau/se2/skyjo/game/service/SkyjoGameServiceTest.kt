@@ -176,16 +176,17 @@ class SkyjoGameServiceTest {
     fun playActionCardReturnsNewState() {
         val stateBeforePlay = GameState(phase = GamePhase.AWAITING_DRAW)
         val stateAfterPlay = GameState(phase = GamePhase.AWAITING_DRAW, actionDiscardPile = ActionDiscardPile(listOf(actionCard(151))))
+        val command = PlayActionCardCommand(actionCardIndex = 0)
 
         every { engine.startGame(any(), any(), any()) } returns stateBeforePlay
         service.startGame(emptyList(), emptyMap())
-        every { engine.playActionCard(stateBeforePlay, 0) } returns stateAfterPlay
+        every { engine.playActionCard(stateBeforePlay, command) } returns stateAfterPlay
 
-        val result = service.playActionCard(0)
+        val result = service.playActionCard(command)
 
         assertEquals(stateAfterPlay, result)
         assertEquals(stateAfterPlay, service.getGameState())
-        verify(exactly = 1) { engine.playActionCard(stateBeforePlay, 0) }
+        verify(exactly = 1) { engine.playActionCard(stateBeforePlay, command) }
     }
 
     private fun actionCard(id: Int) = SkyjoCard.ActionCard.Placeholder(id)

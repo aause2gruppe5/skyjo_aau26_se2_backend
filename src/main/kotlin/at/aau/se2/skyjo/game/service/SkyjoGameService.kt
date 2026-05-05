@@ -3,6 +3,7 @@ package at.aau.se2.skyjo.game.service
 import at.aau.se2.skyjo.game.model.BoardPosition
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import org.springframework.stereotype.Service
 
 @Service
@@ -59,8 +60,8 @@ class SkyjoGameService(
     }
 
     @Synchronized
-    fun playActionCard(actionCardIndex: Int): GameState {
-        currentState = engine.playActionCard(currentState, actionCardIndex)
+    fun playActionCard(command: PlayActionCardCommand): GameState {
+        currentState = engine.playActionCard(currentState, command)
         return currentState
     }
 
