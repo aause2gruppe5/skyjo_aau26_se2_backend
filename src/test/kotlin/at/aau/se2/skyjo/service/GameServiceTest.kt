@@ -230,7 +230,7 @@ class GameServiceTest {
 
     @Test
     fun `handleRoundFinished starts new round when maxRounds not reached`() {
-        service.startGame(players, GameConfig(maxRounds = 2))
+        service.startGame(players, GameConfig(maxRounds = 2, targetScore = 1000))
         val gameState = getInternalGameState(service)
         val currentPlayerId = gameState.currentPlayerId!!
         val finishedState = engine.finishRound(gameState.copy(finisherPlayerId = currentPlayerId))

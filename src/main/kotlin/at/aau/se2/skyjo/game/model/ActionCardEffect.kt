@@ -1,11 +1,10 @@
 package at.aau.se2.skyjo.game.model
 
 sealed interface ActionCardEffect {
-
-    fun apply(state: GameState): GameState
+    fun apply(state: GameState, parameters: ActionCardParameters): GameState
 
     data object Placeholder : ActionCardEffect {
-        override fun apply(state: GameState): GameState = state
+        override fun apply(state: GameState, parameters: ActionCardParameters): GameState = state
     }
 }
 

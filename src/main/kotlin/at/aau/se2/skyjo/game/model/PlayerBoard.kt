@@ -27,7 +27,7 @@ data class PlayerBoard(
         )
     }
 
-    fun replace(position: BoardPosition, card: SkyjoCard): ReplacementResult {
+    fun replace(position: BoardPosition, card: SkyjoCard.PlayingCard): ReplacementResult {
         val slot = slotAt(position)
         require(slot is BoardSlot.Occupied) { "cannot replace a cleared slot" }
 
@@ -99,7 +99,7 @@ data class PlayerBoard(
     }
 
     companion object {
-        fun fromCards(cards: List<SkyjoCard>, revealedPositions: Set<BoardPosition>): PlayerBoard {
+        fun fromCards(cards: List<SkyjoCard.PlayingCard>, revealedPositions: Set<BoardPosition>): PlayerBoard {
             require(cards.size == BoardLayout.POSITIONS.size) { "a player board requires exactly ${BoardLayout.POSITIONS.size} cards" }
             require(revealedPositions.size == 2) { "exactly two initial reveal positions are required" }
 
@@ -117,10 +117,10 @@ data class PlayerBoard(
 
 data class ReplacementResult(
     val board: PlayerBoard,
-    val replacedCard: SkyjoCard,
+    val replacedCard: SkyjoCard.PlayingCard,
 )
 
 data class BoardCleanupResult(
     val board: PlayerBoard,
-    val removedCards: List<SkyjoCard>,
+    val removedCards: List<SkyjoCard.PlayingCard>,
 )
