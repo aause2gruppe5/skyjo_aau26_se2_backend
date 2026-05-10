@@ -14,8 +14,8 @@ class DrawPileTest {
 
     @Test
     fun drawValid(){
-        val card1 = SkyjoCard(1, 2)
-        val card2 = SkyjoCard(2, 10)
+        val card1 = SkyjoCard.NumberCard(1, 2)
+        val card2 = SkyjoCard.NumberCard(2, 10)
         val pile = DrawPile(listOf(card1, card2))
         val result = pile.draw()
 
@@ -30,5 +30,33 @@ class DrawPileTest {
         val exception = assertThrows<IllegalArgumentException>{emptyPile.draw()}
 
         assertEquals("draw pile is empty", exception.message)
+    }
+
+    @Test
+    fun actionEmptyPile() {
+        val pile = ActionDrawPile.empty()
+
+        assertEquals(0, pile.size)
+        assertTrue(pile.cards.isEmpty())
+    }
+
+    @Test
+    fun actionDrawValid() {
+        val card1 = SkyjoCard.ActionCard.Placeholder(151)
+        val card2 = SkyjoCard.ActionCard.Placeholder(152)
+        val pile = ActionDrawPile(listOf(card1, card2))
+        val result = pile.draw()
+
+        assertEquals(card2, result.card)
+        assertEquals(1, result.remainingPile.size)
+        assertEquals(card1, result.remainingPile.cards.first())
+    }
+
+    @Test
+    fun actionDrawInvalid() {
+        val emptyPile = ActionDrawPile.empty()
+        val exception = assertThrows<IllegalArgumentException>{emptyPile.draw()}
+
+        assertEquals("action draw pile is empty", exception.message)
     }
 }
