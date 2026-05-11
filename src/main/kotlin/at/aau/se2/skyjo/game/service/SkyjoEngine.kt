@@ -22,10 +22,12 @@ import at.aau.se2.skyjo.game.model.RoundResult
 import at.aau.se2.skyjo.game.model.SkyjoCard
 import at.aau.se2.skyjo.game.model.SkyjoDeckFactory
 import at.aau.se2.skyjo.game.model.toEffect
+import org.springframework.stereotype.Component
 import kotlin.random.Random
 
 private const val VISIBLE_ACTION_CARD_COUNT = 4
 
+@Component
 class SkyjoEngine {
 
     fun startGame(
@@ -190,7 +192,7 @@ class SkyjoEngine {
 
     fun discardDrawnCardAndReveal(state: GameState, position: BoardPosition): GameState {
         val playableState = requireAwaitingReplacement(state)
-        if (playableState.drawSource == DrawSource.DISCARD) {
+        if (playableState.drawSource != DrawSource.DECK) {
             throw InvalidMoveException("discard and reveal is only allowed after drawing from the deck")
         }
 

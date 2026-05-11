@@ -3,7 +3,6 @@ package at.aau.se2.skyjo.game.model
 import kotlin.random.Random
 
 object SkyjoDeckFactory {
-
     private val cardDistribution: List<Int> = buildList {
         addAll(List(size = 5) { -2 })
         addAll(List(size = 10) { -1 })
