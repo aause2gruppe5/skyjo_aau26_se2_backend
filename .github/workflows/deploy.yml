@@ -63,6 +63,7 @@ jobs:
             docker rm skyjo-backend || true
             docker run -d \
               -p 53209:8080 \
+              -v /opt/skyjo/data:/data \
               --name skyjo-backend \
               --restart unless-stopped \
               ghcr.io/aause2gruppe5/skyjo-backend:latest

@@ -14,7 +14,7 @@ class SkyjoGameServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = SkyjoGameService(engine)
+        service = SkyjoGameService(engine, null)
     }
 
     @Test

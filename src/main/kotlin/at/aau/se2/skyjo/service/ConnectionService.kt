@@ -6,15 +6,19 @@ import java.util.concurrent.ConcurrentHashMap
 @Service
 class ConnectionService {
 
-    private val sessions: ConcurrentHashMap<String, String> = ConcurrentHashMap()
+    data class SessionInfo(val playerName: String, val gameId: String?)
 
-    fun registerSession(sessionId: String, playerName: String) {
-        sessions[sessionId] = playerName
+    private val sessions: ConcurrentHashMap<String, SessionInfo> = ConcurrentHashMap()
+
+    fun registerSession(sessionId: String, playerName: String, gameId: String? = null) {
+        sessions[sessionId] = SessionInfo(playerName, gameId)
     }
 
-    fun removeSession(sessionId: String): String? = sessions.remove(sessionId)
+    fun removeSession(sessionId: String): String? = sessions.remove(sessionId)?.playerName
 
-    fun getPlayerName(sessionId: String): String? = sessions[sessionId]
+    fun getPlayerName(sessionId: String): String? = sessions[sessionId]?.playerName
+
+    fun getGameId(sessionId: String): String? = sessions[sessionId]?.gameId
 
     fun getConnectedCount(): Int = sessions.size
 
