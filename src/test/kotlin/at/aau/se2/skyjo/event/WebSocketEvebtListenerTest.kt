@@ -32,7 +32,7 @@ class WebSocketEventListenerTest {
 
     @BeforeEach
     fun setUp() {
-        listener = WebSocketEventListener(messagingTemplate, lobbyService, null)
+        listener = WebSocketEventListener(messagingTemplate, lobbyService, gameService = null)
     }
 
     private val playerId = "player-123"

@@ -44,6 +44,11 @@ class GameService(
 
     fun getActiveGameId(): String? = currentGameId
 
+    fun markPlayerDisconnected(principalId: String) {
+        val nickname = playerInfo[principalId] ?: return
+        gameRepository?.markDisconnected(nickname)
+    }
+
     fun addSessionAlias(newSessionId: String, nickname: String): Boolean = lock.withLock {
         val oldPlayerId = playerInfo.entries.firstOrNull { it.value == nickname }?.key ?: return@withLock false
         sessionAliases[newSessionId] = oldPlayerId
@@ -70,6 +75,7 @@ class GameService(
         gameState = newState
         currentGameId = UUID.randomUUID().toString()
         gameRepository?.saveGame(currentGameId!!, newState)
+        players.forEach { gameRepository?.savePlayerSession(it.nickname, currentGameId!!, connected = true) }
         toUpdateMessage(newState, gameOver = false)
     }
 
