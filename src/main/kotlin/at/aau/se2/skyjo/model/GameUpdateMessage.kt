@@ -13,6 +13,7 @@ data class GameUpdateMessage(
     val roundNumber: Int,
     val totalScores: List<PlayerScoreDto>,
     val gameOver: Boolean,
+    val gameId: String? = null,
 )
 
 data class PlayerBoardDto(

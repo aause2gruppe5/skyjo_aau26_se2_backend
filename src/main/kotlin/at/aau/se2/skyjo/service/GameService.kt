@@ -183,6 +183,7 @@ class GameService(
             roundNumber = roundNumber,
             totalScores = scores,
             gameOver = gameOver,
+            gameId = currentGameId,
         )
     }
 
