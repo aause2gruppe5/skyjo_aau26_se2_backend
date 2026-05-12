@@ -30,6 +30,10 @@ class WebSocketEventListener(
     fun handleWebSocketDisconnectListener(event: SessionDisconnectEvent) {
         val playerId = event.user?.name ?: return
         gameService?.markPlayerDisconnected(playerId)
+        val currentGameState = gameService?.getCurrentState()
+        if (currentGameState != null) {
+            messagingTemplate.convertAndSend("/topic/game", currentGameState)
+        }
         if (lobbyService.isPlayerInLobby(playerId)) {
             val updatedState = lobbyService.leave(playerId)
             logger.info("Player disconnected and removed from lobby: $playerId")
