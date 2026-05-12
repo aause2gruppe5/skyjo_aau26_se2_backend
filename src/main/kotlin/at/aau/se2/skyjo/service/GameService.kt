@@ -40,8 +40,15 @@ class GameService(
     private var roundNumber: Int = 0
     private var totalScores: Map<String, Int> = emptyMap()
     private var playerInfo: Map<String, String> = emptyMap()
+    private val sessionAliases: MutableMap<String, String> = mutableMapOf()
 
     fun getActiveGameId(): String? = currentGameId
+
+    fun addSessionAlias(newSessionId: String, nickname: String): Boolean = lock.withLock {
+        val oldPlayerId = playerInfo.entries.firstOrNull { it.value == nickname }?.key ?: return@withLock false
+        sessionAliases[newSessionId] = oldPlayerId
+        true
+    }
 
     init {
         gameRepository?.loadActiveGame()?.let { (id, state) ->
@@ -68,8 +75,9 @@ class GameService(
 
     fun processAction(playerId: String, action: GameActionMessage): GameUpdateMessage = lock.withLock {
         val state = gameState ?: error("game has not started yet")
+        val resolvedPlayerId = sessionAliases[playerId] ?: playerId
 
-        if (state.currentPlayerId != playerId) {
+        if (state.currentPlayerId != resolvedPlayerId) {
             error("not your turn (current player: ${state.currentPlayerId})")
         }
 

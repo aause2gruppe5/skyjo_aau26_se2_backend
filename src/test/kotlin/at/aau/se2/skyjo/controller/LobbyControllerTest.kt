@@ -1,6 +1,5 @@
 package at.aau.se2.skyjo.controller
 import io.mockk.*
-import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.impl.annotations.RelaxedMockK
 import io.mockk.junit5.MockKExtension
@@ -27,8 +26,7 @@ class LobbyControllerTest {
     @RelaxedMockK
     lateinit var messagingTemplate: SimpMessageSendingOperations
 
-    @InjectMockKs
-    lateinit var controller: LobbyController
+    private lateinit var controller: LobbyController
 
     @MockK
     lateinit var headerAccessor: SimpMessageHeaderAccessor
@@ -40,6 +38,7 @@ class LobbyControllerTest {
 
     @BeforeEach
     fun setUp() {
+        controller = LobbyController(lobbyService, gameService, messagingTemplate, null)
         // Simuliert einen angemeldeten Websocket-User
         every { headerAccessor.user } returns principal
         every { principal.name } returns playerId

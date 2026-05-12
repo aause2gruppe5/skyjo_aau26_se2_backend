@@ -6,6 +6,7 @@ import at.aau.se2.skyjo.model.LobbyUpdateMessage
 import at.aau.se2.skyjo.model.PlayerMessage
 import at.aau.se2.skyjo.model.StartGameMessage
 import at.aau.se2.skyjo.model.lobby.LobbyState
+import at.aau.se2.skyjo.persistence.GameRepository
 import at.aau.se2.skyjo.service.GameService
 import at.aau.se2.skyjo.service.LobbyService
 import org.slf4j.LoggerFactory
@@ -20,6 +21,7 @@ class LobbyController(
     private val lobbyService: LobbyService,
     private val gameService: GameService,
     private val messagingTemplate: SimpMessageSendingOperations,
+    private val gameRepository: GameRepository?,
 ) {
 
     private val logger = LoggerFactory.getLogger(LobbyController::class.java)
@@ -30,6 +32,21 @@ class LobbyController(
         headerAccessor: SimpMessageHeaderAccessor,
     ) {
         val playerId = headerAccessor.user?.name ?: return
+
+        // Rejoin: Spieler hat eine bekannte gameId → Spiel wiederherstellen
+        val incomingGameId = message.gameId
+        val storedGameId = gameRepository?.getPlayerGame(message.playerName)
+        if (incomingGameId != null && incomingGameId == storedGameId) {
+            gameRepository?.savePlayerSession(message.playerName, storedGameId, connected = true)
+            gameService.addSessionAlias(playerId, message.playerName)
+            val state = gameService.getCurrentState()
+            if (state != null) {
+                messagingTemplate.convertAndSendToUser(playerId, "/queue/gamestate", state)
+            }
+            logger.info("Player rejoined: ${message.playerName} (newSessionId=$playerId, gameId=$storedGameId)")
+            return
+        }
+
         runCatching {
             // Den Namen aus der App holen und Leerzeichen am Rand entfernen
             val rawName = message.playerName.trim()
