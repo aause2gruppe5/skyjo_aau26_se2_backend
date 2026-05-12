@@ -27,7 +27,7 @@ data class PlayerBoard(
         )
     }
 
-    fun replace(position: BoardPosition, card: SkyjoCard): ReplacementResult {
+    fun replace(position: BoardPosition, card: SkyjoCard.PlayingCard): ReplacementResult {
         val slot = slotAt(position)
         require(slot is BoardSlot.Occupied) { "cannot replace a cleared slot" }
 
@@ -79,7 +79,7 @@ data class PlayerBoard(
         BoardLayout.POSITIONS.sumOf { position ->
             when (val slot = slotAt(position)) {
                 is BoardSlot.Cleared -> 0
-                is BoardSlot.Occupied -> slot.card.value
+                is BoardSlot.Occupied -> slot.card.scoreValue()
             }
         }
 
@@ -87,7 +87,7 @@ data class PlayerBoard(
         positions.sumOf { position ->
             val slot = slotAt(position)
             require(slot is BoardSlot.Occupied && slot.faceUp) { "position $position must contain a face-up card" }
-            slot.card.value
+            slot.card.scoreValue()
         }
 
     private fun isCompletedMatchingLine(line: List<BoardPosition>): Boolean {
@@ -96,11 +96,11 @@ data class PlayerBoard(
             return false
         }
 
-        return occupiedSlots.map { it.card.value }.distinct().size == 1
+        return occupiedSlots.map { it.card.scoreValue() }.distinct().size == 1
     }
 
     companion object {
-        fun fromCards(cards: List<SkyjoCard>, revealedPositions: Set<BoardPosition>): PlayerBoard {
+        fun fromCards(cards: List<SkyjoCard.PlayingCard>, revealedPositions: Set<BoardPosition>): PlayerBoard {
             require(cards.size == BoardLayout.POSITIONS.size) { "a player board requires exactly ${BoardLayout.POSITIONS.size} cards" }
             require(revealedPositions.size == 2) { "exactly two initial reveal positions are required" }
 
@@ -118,10 +118,10 @@ data class PlayerBoard(
 
 data class ReplacementResult(
     val board: PlayerBoard,
-    val replacedCard: SkyjoCard,
+    val replacedCard: SkyjoCard.PlayingCard,
 )
 
 data class BoardCleanupResult(
     val board: PlayerBoard,
-    val removedCards: List<SkyjoCard>,
+    val removedCards: List<SkyjoCard.PlayingCard>,
 )

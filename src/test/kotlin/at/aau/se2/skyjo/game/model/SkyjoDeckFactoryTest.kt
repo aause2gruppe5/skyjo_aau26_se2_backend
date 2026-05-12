@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Assertions.*
 
 class SkyjoDeckFactoryTest {
     @Test
-    fun cardDistributionMakes150Cards(){
+    fun cardDistributionMakes150NumberCards(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
 
         assertEquals(150, drawPile.cards.size)
@@ -13,9 +13,10 @@ class SkyjoDeckFactoryTest {
     @Test
     fun cardDistributionIsCorrect(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
-        val cards = drawPile.cards
-        val counts = cards.groupingBy { it.value }.eachCount()
+        val cards = drawPile.cards.filterIsInstance<SkyjoCard.NumberCard>()
+        val counts = cards.groupingBy { it.scoreValue() }.eachCount()
 
+        assertEquals(150, cards.size)
         assertEquals(5, counts[-2])
         assertEquals(10, counts[-1])
         assertEquals(15, counts[0])
@@ -23,12 +24,36 @@ class SkyjoDeckFactoryTest {
     }
 
     @Test
+    fun cardDistributionContainsActionCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+        val actionCards = drawPile.cards.filterIsInstance<SkyjoCard.ActionCard>()
+
+        assertEquals(21, actionCards.size)
+    }
+
+    @Test
     fun cardsHaveUniqueId(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
-        val ids = drawPile.cards.map{it.id}
+        val actionDrawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+        val ids = (drawPile.cards + actionDrawPile.cards).map{it.id}
 
-        assertEquals(150, ids.toSet().size) //toSet entfehrnt Duplikate
-        assertTrue(ids.all{it in 1..150})
+        assertEquals(171, ids.toSet().size) //toSet entfehrnt Duplikate
+        assertTrue(ids.all{it in 1..171})
+    }
+
+    @Test
+    fun numberDrawPileContainsOnlyNumberCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
+
+        assertTrue(drawPile.cards.all { it is SkyjoCard.NumberCard })
+    }
+
+    @Test
+    fun actionDrawPileContainsOnlyActionCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(21, drawPile.cards.size)
+        assertTrue(drawPile.cards.all { it.id in 151..171 })
     }
 
     @Test

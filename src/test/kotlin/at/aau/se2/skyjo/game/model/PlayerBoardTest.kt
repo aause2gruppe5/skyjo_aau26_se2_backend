@@ -5,13 +5,13 @@ import org.junit.jupiter.api.assertThrows
 
 class PlayerBoardTest {
     private val pos00 = BoardPosition(0, 0) //standart Testposition und Karten
-    private val card5 = SkyjoCard(100, 5)
+    private val card5 = SkyjoCard.NumberCard(100, 5)
 
 
     private fun createTestBoard(defaultValue: Int = 0, faceUp: Boolean = false): PlayerBoard { //erstellt vollständiges Board
         val slots = BoardLayout.POSITIONS.associateWith{pos ->
             val uniqueId = pos.row * BoardLayout.COLUMNS + pos.column
-            BoardSlot.Occupied(SkyjoCard(id = uniqueId, defaultValue), faceUp)
+            BoardSlot.Occupied(SkyjoCard.NumberCard(id = uniqueId, defaultValue), faceUp)
         }
         return PlayerBoard(slots)
     }
@@ -52,7 +52,7 @@ class PlayerBoardTest {
 
         val slotsWithCleared = BoardLayout.POSITIONS.associateWith{p ->
             if (p == pos) BoardSlot.Cleared
-            else BoardSlot.Occupied(SkyjoCard(0,0), faceUp = true)
+            else BoardSlot.Occupied(SkyjoCard.NumberCard(0,0), faceUp = true)
         }
         val boardClearedSlots = PlayerBoard(slotsWithCleared)
         assertEquals(0, boardClearedSlots.hiddenPositions().size) //alle Karten aufgedeckt oder nicht occupied
@@ -65,7 +65,7 @@ class PlayerBoardTest {
         val updatedBoard = board.reveal(pos)
         val slotsWithCleared = BoardLayout.POSITIONS.associateWith{p ->
             if (p == pos) BoardSlot.Cleared
-            else BoardSlot.Occupied(SkyjoCard(0,0), faceUp = false)
+            else BoardSlot.Occupied(SkyjoCard.NumberCard(0,0), faceUp = false)
         }
         val boardClearedSlots = PlayerBoard(slotsWithCleared)
         val exception = assertThrows<IllegalArgumentException>{boardClearedSlots.reveal(pos)}
@@ -79,11 +79,11 @@ class PlayerBoardTest {
     @Test
     fun replaceLogicAndError(){
         val pos = BoardPosition(2, 2)
-        val oldCard = SkyjoCard(1, 10)
-        val newCard = SkyjoCard(2, -2)
+        val oldCard = SkyjoCard.NumberCard(1, 10)
+        val newCard = SkyjoCard.NumberCard(2, -2)
         val slots = BoardLayout.POSITIONS.associateWith{
             if (it == pos) BoardSlot.Occupied(oldCard, false)
-            else BoardSlot.Occupied(SkyjoCard(it.row * 10, 0), false)
+            else BoardSlot.Occupied(SkyjoCard.NumberCard(it.row * 10, 0), false)
         }
         val board = PlayerBoard(slots)
         val result = board.replace(pos, newCard)
@@ -95,7 +95,7 @@ class PlayerBoardTest {
 
         val slotsWithCleared = BoardLayout.POSITIONS.associateWith{p ->
             if (p == pos) BoardSlot.Cleared
-            else BoardSlot.Occupied(SkyjoCard(0,0), faceUp = false)
+            else BoardSlot.Occupied(SkyjoCard.NumberCard(0,0), faceUp = false)
         }
         val boardClearedSlots = PlayerBoard(slotsWithCleared)
         val exception  = assertThrows<IllegalArgumentException>{boardClearedSlots.replace(pos, newCard)}
@@ -107,8 +107,8 @@ class PlayerBoardTest {
     fun fullyRevealValid(){
         val hiddenPos = BoardPosition(0, 0)
         val openPos = BoardPosition(1, 0)
-        val card1 = SkyjoCard(1, 5)
-        val card2 = SkyjoCard(2, 0)
+        val card1 = SkyjoCard.NumberCard(1, 5)
+        val card2 = SkyjoCard.NumberCard(2, 0)
         val slots = BoardLayout.POSITIONS.associateWith{p ->    //es gibt jeweils eine offene und eine geschlossene Karte
             when (p){
                 hiddenPos -> BoardSlot.Occupied(card1, faceUp = false)
@@ -122,9 +122,9 @@ class PlayerBoardTest {
         val slotOpen = revealedBoard.slotAt(openPos) as BoardSlot.Occupied
 
         assertTrue(slotHidden.faceUp)
-        assertEquals(5, slotHidden.card.value)
+        assertEquals(5, slotHidden.card.scoreValue())
         assertTrue(slotOpen.faceUp)
-        assertEquals(0, slotOpen.card.value)
+        assertEquals(0, slotOpen.card.scoreValue())
         assertFalse(revealedBoard.hasHiddenCards()) //testet ob alles offen ist
     }
 
@@ -134,7 +134,7 @@ class PlayerBoardTest {
         val board = createTestBoard(defaultValue = 5)
         val slotsWithCleared = BoardLayout.POSITIONS.associateWith{p ->
             if (p == pos) BoardSlot.Cleared
-            else BoardSlot.Occupied(SkyjoCard(0, 5), faceUp = true)
+            else BoardSlot.Occupied(SkyjoCard.NumberCard(0, 5), faceUp = true)
         }
         val boardClearedSlots = PlayerBoard(slotsWithCleared)
 
@@ -150,7 +150,7 @@ class PlayerBoardTest {
         val hiddenBoard = createTestBoard(faceUp = false)
         val slotsWithCleared = BoardLayout.POSITIONS.associateWith{p ->
             if (p == pos) BoardSlot.Cleared
-            else BoardSlot.Occupied(SkyjoCard(0,0), faceUp = true)
+            else BoardSlot.Occupied(SkyjoCard.NumberCard(0,0), faceUp = true)
         }
         val boardClearedSlots = PlayerBoard(slotsWithCleared)
 
@@ -164,13 +164,13 @@ class PlayerBoardTest {
         val targetColumn = 0
         val slots = BoardLayout.POSITIONS.associateWith{p ->
             val isMatch = p.column == targetColumn
-            BoardSlot.Occupied(SkyjoCard(p.row * 10 + p.column, if(isMatch) 1 else 2), faceUp = isMatch)
+            BoardSlot.Occupied(SkyjoCard.NumberCard(p.row * 10 + p.column, if(isMatch) 1 else 2), faceUp = isMatch)
         }
         val board = PlayerBoard(slots)
         val result = board.clearCompletedLines()
 
         assertEquals(3, result.removedCards.size)
-        assertTrue(result.removedCards.all{it.value == 1})
+        assertTrue(result.removedCards.all { it.scoreValue() == 1 })
         BoardLayout.VERTICAL_LINES[targetColumn].forEach{p ->
             assertTrue(result.board.slotAt(p) is BoardSlot.Cleared)
         }
@@ -182,7 +182,7 @@ class PlayerBoardTest {
         val slots1 = BoardLayout.POSITIONS.associateWith{p ->
             val isMatch = p.column == targetColumn
             val isFaceUp = isMatch && p.row != 1
-            BoardSlot.Occupied(SkyjoCard(p.row * 10 + p.column, 1), faceUp = isFaceUp)
+            BoardSlot.Occupied(SkyjoCard.NumberCard(p.row * 10 + p.column, 1), faceUp = isFaceUp)
         }
         val board1 = PlayerBoard(slots1)
         val result1 = board1.clearCompletedLines()
@@ -191,7 +191,7 @@ class PlayerBoardTest {
         assertEquals(board1, result1.board)
 
         val slots2 = BoardLayout.POSITIONS.associateWith{p ->
-            BoardSlot.Occupied(SkyjoCard(p.row * 10 + p.column, p.row + p.column), faceUp = true)
+            BoardSlot.Occupied(SkyjoCard.NumberCard(p.row * 10 + p.column, p.row + p.column), faceUp = true)
         }
         val board2 = PlayerBoard(slots2)
         val result2 = board2.clearCompletedLines()
@@ -208,7 +208,7 @@ class PlayerBoardTest {
 
     @Test
     fun fromCardsExpectsTwoOpenCards(){
-        val cards = List(12){SkyjoCard(it, it)}
+        val cards = List(12){SkyjoCard.NumberCard(it, it)}
         val revealed = setOf(BoardPosition(0, 0), BoardPosition(1, 0))
         val board = PlayerBoard.fromCards(cards, revealed)
 
@@ -219,14 +219,14 @@ class PlayerBoardTest {
 
     @Test
     fun fromCardsExceptions(){
-        val elevenCards = List(11){SkyjoCard(it, it)}
+        val elevenCards = List(11){SkyjoCard.NumberCard(it, it)}
         val validRevealed = setOf(BoardPosition(0, 0), BoardPosition(1, 0))
         val exception = assertThrows<IllegalArgumentException>{
             PlayerBoard.fromCards(elevenCards, validRevealed)
         }
         assertEquals("a player board requires exactly 12 cards", exception.message)
 
-        val twelveCards = List(12){SkyjoCard(it, it)}
+        val twelveCards = List(12){SkyjoCard.NumberCard(it, it)}
         val onePos = setOf(BoardPosition(0, 0))
         val threePos = setOf(BoardPosition(1, 0), BoardPosition(0, 1), BoardPosition(1, 1))
         val ex1 = assertThrows<IllegalArgumentException>{

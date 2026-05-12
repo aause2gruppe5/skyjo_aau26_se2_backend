@@ -3,6 +3,7 @@ package at.aau.se2.skyjo.game.service
 import at.aau.se2.skyjo.game.model.BoardPosition
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import org.springframework.stereotype.Service
 
 @Service
@@ -37,6 +38,30 @@ class SkyjoGameService(
     @Synchronized
     fun takeDiscardCard(): GameState {
         currentState = engine.takeDiscardCard(currentState)
+        return currentState
+    }
+
+    @Synchronized
+    fun drawVisibleActionCard(actionCardIndex: Int): GameState {
+        currentState = engine.drawVisibleActionCard(currentState, actionCardIndex)
+        return currentState
+    }
+
+    @Synchronized
+    fun drawActionCardFromDeck(): GameState {
+        currentState = engine.drawActionCardFromDeck(currentState)
+        return currentState
+    }
+
+    @Synchronized
+    fun discardActionCard(actionCardIndex: Int): GameState {
+        currentState = engine.discardActionCard(currentState, actionCardIndex)
+        return currentState
+    }
+
+    @Synchronized
+    fun playActionCard(command: PlayActionCardCommand): GameState {
+        currentState = engine.playActionCard(currentState, command)
         return currentState
     }
 
