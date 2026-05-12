@@ -5,6 +5,7 @@ import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
 import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.databind.DeserializationContext
+import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.KeyDeserializer
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializerProvider
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Repository
 class GameRepository(private val jdbc: JdbcTemplate) {
 
     private val mapper: ObjectMapper = jacksonObjectMapper().apply {
+        configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
         val module = SimpleModule()
         module.addKeySerializer(BoardPosition::class.java, object : StdSerializer<BoardPosition>(BoardPosition::class.java) {
             override fun serialize(value: BoardPosition, gen: JsonGenerator, ser: SerializerProvider) {
@@ -37,6 +39,7 @@ class GameRepository(private val jdbc: JdbcTemplate) {
             BasicPolymorphicTypeValidator.builder()
                 .allowIfSubType("at.aau.se2.skyjo")
                 .allowIfSubType("java.util")
+                .allowIfSubType("kotlin.collections")
                 .allowIfSubTypeIsArray()
                 .build(),
             ObjectMapper.DefaultTyping.NON_CONCRETE_AND_ARRAYS,

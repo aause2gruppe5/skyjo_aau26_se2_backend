@@ -8,7 +8,9 @@ import at.aau.se2.skyjo.service.ConnectionService
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor
 import org.springframework.messaging.simp.SimpMessageSendingOperations
@@ -99,5 +101,49 @@ class GameControllerTest {
         val result = controller.leaveGame(headerAccessor)
 
         assertEquals(MessageType.ERROR, result.type)
+    }
+
+    @Test
+    fun `joinGame saves player session when active game exists`() {
+        val headerAccessor = SimpMessageHeaderAccessor.create()
+        headerAccessor.sessionId = "s3"
+        val message = PlayerMessage("Carol")
+        whenever(gameService.getActiveGameId()).thenReturn("active-game-id")
+
+        val result = controller.joinGame(message, headerAccessor)
+
+        verify(connectionService).registerSession("s3", "Carol", "active-game-id")
+        verify(gameRepository).savePlayerSession("Carol", "active-game-id", connected = true)
+        assertEquals(MessageType.PLAYER_JOINED, result.type)
+    }
+
+    @Test
+    fun `joinGame rejoins and sends game state when state available`() {
+        val headerAccessor = SimpMessageHeaderAccessor.create()
+        headerAccessor.sessionId = "s4"
+        val gameState = at.aau.se2.skyjo.game.model.GameState(
+            phase = at.aau.se2.skyjo.game.model.GamePhase.AWAITING_DRAW
+        )
+        val message = PlayerMessage("Dave", gameId = "game-xyz")
+        whenever(gameRepository.getPlayerGame("Dave")).thenReturn("game-xyz")
+        whenever(gameService.getGameState()).thenReturn(gameState)
+
+        controller.joinGame(message, headerAccessor)
+
+        verify(messagingTemplate).convertAndSendToUser("s4", "/queue/gamestate", gameState)
+    }
+
+    @Test
+    fun `joinGame rejoins without sending state when no active game state`() {
+        val headerAccessor = SimpMessageHeaderAccessor.create()
+        headerAccessor.sessionId = "s5"
+        val message = PlayerMessage("Eve", gameId = "game-xyz")
+        whenever(gameRepository.getPlayerGame("Eve")).thenReturn("game-xyz")
+        whenever(gameService.getGameState()).thenReturn(null)
+
+        val result = controller.joinGame(message, headerAccessor)
+
+        verifyNoInteractions(messagingTemplate)
+        assertEquals(MessageType.PLAYER_REJOINED, result.type)
     }
 }
