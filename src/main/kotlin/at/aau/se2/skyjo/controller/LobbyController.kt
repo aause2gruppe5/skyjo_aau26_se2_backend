@@ -70,6 +70,8 @@ class LobbyController(
 
             // Alle Clients über das Update informieren
             messagingTemplate.convertAndSend("/topic/lobby", state.toUpdateMessage())
+            // Direkt an beitretenden Spieler senden (Subscription-Race-Condition vermeiden)
+            messagingTemplate.convertAndSendToUser(playerId, "/queue/lobby", state.toUpdateMessage())
 
         }.onFailure { e ->
             // Fehler (z.B. Name zu kurz oder vergeben) an den jeweiligen Spieler zurücksenden
