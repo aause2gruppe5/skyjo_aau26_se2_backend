@@ -20,20 +20,35 @@ import at.aau.se2.skyjo.model.PlayerBoardDto
 import at.aau.se2.skyjo.model.PlayerScoreDto
 import at.aau.se2.skyjo.model.SlotType
 import at.aau.se2.skyjo.model.lobby.LobbyPlayer
+import at.aau.se2.skyjo.persistence.GameRepository
 import org.springframework.stereotype.Service
+import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 @Service
-class GameService(private val engine: SkyjoEngine) {
+class GameService(
+    private val engine: SkyjoEngine,
+    private val gameRepository: GameRepository?,
+) {
 
     private val lock = ReentrantLock()
 
+    private var currentGameId: String? = null
     private var gameState: GameState? = null
     private var config: GameConfig = GameConfig()
     private var roundNumber: Int = 0
     private var totalScores: Map<String, Int> = emptyMap()
     private var playerInfo: Map<String, String> = emptyMap()
+
+    fun getActiveGameId(): String? = currentGameId
+
+    init {
+        gameRepository?.loadActiveGame()?.let { (id, state) ->
+            currentGameId = id
+            gameState = state
+        }
+    }
 
     fun startGame(players: List<LobbyPlayer>, gameConfig: GameConfig = GameConfig()): GameUpdateMessage = lock.withLock {
         val playerIds = players.map { it.sessionId }
@@ -46,6 +61,8 @@ class GameService(private val engine: SkyjoEngine) {
 
         val newState = engine.startGame(playerIds, initialReveals)
         gameState = newState
+        currentGameId = UUID.randomUUID().toString()
+        gameRepository?.saveGame(currentGameId!!, newState)
         toUpdateMessage(newState, gameOver = false)
     }
 
@@ -77,6 +94,7 @@ class GameService(private val engine: SkyjoEngine) {
         }
 
         gameState = updatedState
+        currentGameId?.let { gameRepository?.saveGame(it, updatedState) }
 
         if (updatedState.phase == GamePhase.ROUND_FINISHED) {
             return@withLock handleRoundFinished(updatedState)
@@ -107,6 +125,7 @@ class GameService(private val engine: SkyjoEngine) {
         val initialReveals = playerIds.associateWith { setOf(BoardPosition(0, 0), BoardPosition(0, 1)) }
         val newRoundState = engine.startGame(playerIds, initialReveals)
         gameState = newRoundState
+        currentGameId?.let { gameRepository?.saveGame(it, newRoundState) }
         return toUpdateMessage(newRoundState, gameOver = false)
     }
 

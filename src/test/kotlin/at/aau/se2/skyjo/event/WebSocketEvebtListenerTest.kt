@@ -1,10 +1,10 @@
 package at.aau.se2.skyjo.event
 
 import io.mockk.*
-import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.impl.annotations.RelaxedMockK
 import io.mockk.junit5.MockKExtension
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -25,11 +25,15 @@ class WebSocketEventListenerTest {
     @MockK
     lateinit var lobbyService: LobbyService
 
-    @InjectMockKs
-    lateinit var listener: WebSocketEventListener
+    private lateinit var listener: WebSocketEventListener
 
     @MockK
     lateinit var principal: Principal
+
+    @BeforeEach
+    fun setUp() {
+        listener = WebSocketEventListener(messagingTemplate, lobbyService, null)
+    }
 
     private val playerId = "player-123"
 

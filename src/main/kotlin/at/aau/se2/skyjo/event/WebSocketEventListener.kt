@@ -3,6 +3,7 @@ package at.aau.se2.skyjo.event
 import at.aau.se2.skyjo.model.LobbyPlayerInfo
 import at.aau.se2.skyjo.model.LobbyUpdateMessage
 import at.aau.se2.skyjo.model.lobby.LobbyState
+import at.aau.se2.skyjo.persistence.GameRepository
 import at.aau.se2.skyjo.service.LobbyService
 import org.slf4j.LoggerFactory
 import org.springframework.context.event.EventListener
@@ -15,6 +16,7 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent
 class WebSocketEventListener(
     private val messagingTemplate: SimpMessageSendingOperations,
     private val lobbyService: LobbyService,
+    private val gameRepository: GameRepository?,
 ) {
 
     private val logger = LoggerFactory.getLogger(WebSocketEventListener::class.java)
@@ -27,6 +29,7 @@ class WebSocketEventListener(
     @EventListener
     fun handleWebSocketDisconnectListener(event: SessionDisconnectEvent) {
         val playerId = event.user?.name ?: return
+        gameRepository?.markDisconnected(playerId)
         if (lobbyService.isPlayerInLobby(playerId)) {
             val updatedState = lobbyService.leave(playerId)
             logger.info("Player disconnected and removed from lobby: $playerId")

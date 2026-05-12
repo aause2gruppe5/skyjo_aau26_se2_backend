@@ -27,7 +27,7 @@ class GameServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = GameService(engine)
+        service = GameService(engine, null)
     }
 
     // ── startGame ──────────────────────────────────────────────────────────
