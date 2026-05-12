@@ -14,6 +14,7 @@ data class GameUpdateMessage(
     val totalScores: List<PlayerScoreDto>,
     val gameOver: Boolean,
     val gameId: String? = null,
+    val disconnectedPlayers: List<String> = emptyList(),
 )
 
 data class PlayerBoardDto(

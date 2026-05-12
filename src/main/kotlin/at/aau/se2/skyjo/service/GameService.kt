@@ -41,17 +41,20 @@ class GameService(
     private var totalScores: Map<String, Int> = emptyMap()
     private var playerInfo: Map<String, String> = emptyMap()
     private val sessionAliases: MutableMap<String, String> = mutableMapOf()
+    private val disconnectedNicknames: MutableSet<String> = mutableSetOf()
 
     fun getActiveGameId(): String? = currentGameId
 
     fun markPlayerDisconnected(principalId: String) {
         val nickname = playerInfo[principalId] ?: return
+        disconnectedNicknames.add(nickname)
         gameRepository?.markDisconnected(nickname)
     }
 
     fun addSessionAlias(newSessionId: String, nickname: String): Boolean = lock.withLock {
         val oldPlayerId = playerInfo.entries.firstOrNull { it.value == nickname }?.key ?: return@withLock false
         sessionAliases[newSessionId] = oldPlayerId
+        disconnectedNicknames.remove(nickname)
         true
     }
 
@@ -184,6 +187,7 @@ class GameService(
             totalScores = scores,
             gameOver = gameOver,
             gameId = currentGameId,
+            disconnectedPlayers = disconnectedNicknames.toList(),
         )
     }
 

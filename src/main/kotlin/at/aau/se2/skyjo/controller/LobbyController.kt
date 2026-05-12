@@ -33,10 +33,9 @@ class LobbyController(
     ) {
         val playerId = headerAccessor.user?.name ?: return
 
-        // Rejoin: Spieler hat eine bekannte gameId → Spiel wiederherstellen
-        val incomingGameId = message.gameId
+        // Rejoin: Spieler hat eine aktive Game-Session → Spiel wiederherstellen
         val storedGameId = gameRepository?.getPlayerGame(message.playerName)
-        if (incomingGameId != null && incomingGameId == storedGameId) {
+        if (storedGameId != null && storedGameId == gameService.getActiveGameId()) {
             gameRepository?.savePlayerSession(message.playerName, storedGameId, connected = true)
             gameService.addSessionAlias(playerId, message.playerName)
             val state = gameService.getCurrentState()
