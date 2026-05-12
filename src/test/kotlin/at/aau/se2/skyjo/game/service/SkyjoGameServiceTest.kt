@@ -1,13 +1,9 @@
 package at.aau.se2.skyjo.game.service
 import at.aau.se2.skyjo.game.model.*
-import at.aau.se2.skyjo.persistence.GameRepository
 import io.mockk.every
-import io.mockk.just
 import io.mockk.mockk
-import io.mockk.Runs
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -18,7 +14,7 @@ class SkyjoGameServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = SkyjoGameService(engine, null)
+        service = SkyjoGameService(engine)
     }
 
     @Test
@@ -194,119 +190,4 @@ class SkyjoGameServiceTest {
     }
 
     private fun actionCard(id: Int) = SkyjoCard.ActionCard.Placeholder(id)
-
-    // ── Repository integration tests ──────────────────────────────────────
-
-    @Test
-    fun `startGame calls saveGame on repository`() {
-        val repo: GameRepository = mockk()
-        every { repo.loadActiveGame() } returns null
-        val serviceWithRepo = SkyjoGameService(engine, repo)
-        val state = GameState(phase = GamePhase.AWAITING_DRAW)
-
-        every { engine.startGame(any(), any(), any()) } returns state
-        every { repo.saveGame(any(), any()) } just Runs
-
-        serviceWithRepo.startGame(emptyList(), emptyMap())
-
-        verify(exactly = 1) { repo.saveGame(any(), state) }
-        assertNotNull(serviceWithRepo.getActiveGameId())
-    }
-
-    @Test
-    fun `init block loads active game from repository`() {
-        val repo: GameRepository = mockk()
-        val restoredState = GameState(phase = GamePhase.AWAITING_DRAW)
-        every { repo.loadActiveGame() } returns ("restored-id" to restoredState)
-
-        val serviceWithRepo = SkyjoGameService(engine, repo)
-
-        assertEquals(restoredState, serviceWithRepo.getGameState())
-        assertEquals("restored-id", serviceWithRepo.getActiveGameId())
-    }
-
-    @Test
-    fun `init block does nothing when repository returns null`() {
-        val repo: GameRepository = mockk()
-        every { repo.loadActiveGame() } returns null
-
-        val serviceWithRepo = SkyjoGameService(engine, repo)
-
-        assertNull(serviceWithRepo.getGameState())
-        assertNull(serviceWithRepo.getActiveGameId())
-    }
-
-    @Test
-    fun `drawFromDeck persists state when repository present`() {
-        val repo: GameRepository = mockk()
-        every { repo.loadActiveGame() } returns null
-        val serviceWithRepo = SkyjoGameService(engine, repo)
-
-        val stateAfterStart = GameState(phase = GamePhase.AWAITING_DRAW)
-        every { engine.startGame(any(), any(), any()) } returns stateAfterStart
-        every { repo.saveGame(any(), any()) } just Runs
-        serviceWithRepo.startGame(emptyList(), emptyMap())
-
-        val stateAfterDraw = GameState(phase = GamePhase.AWAITING_REPLACEMENT)
-        every { engine.drawFromDeck(stateAfterStart) } returns stateAfterDraw
-        serviceWithRepo.drawFromDeck()
-
-        verify(atLeast = 2) { repo.saveGame(any(), any()) }
-    }
-
-    @Test
-    fun `takeDiscardCard persists state when repository present`() {
-        val repo: GameRepository = mockk()
-        every { repo.loadActiveGame() } returns null
-        val serviceWithRepo = SkyjoGameService(engine, repo)
-
-        val stateAfterStart = GameState(phase = GamePhase.AWAITING_DRAW)
-        every { engine.startGame(any(), any(), any()) } returns stateAfterStart
-        every { repo.saveGame(any(), any()) } just Runs
-        serviceWithRepo.startGame(emptyList(), emptyMap())
-
-        val stateAfterTake = GameState(phase = GamePhase.AWAITING_REPLACEMENT)
-        every { engine.takeDiscardCard(stateAfterStart) } returns stateAfterTake
-        serviceWithRepo.takeDiscardCard()
-
-        verify(atLeast = 2) { repo.saveGame(any(), any()) }
-    }
-
-    @Test
-    fun `replaceDrawnCard persists state when repository present`() {
-        val repo: GameRepository = mockk()
-        every { repo.loadActiveGame() } returns null
-        val serviceWithRepo = SkyjoGameService(engine, repo)
-
-        val stateAfterStart = GameState(phase = GamePhase.AWAITING_REPLACEMENT)
-        every { engine.startGame(any(), any(), any()) } returns stateAfterStart
-        every { repo.saveGame(any(), any()) } just Runs
-        serviceWithRepo.startGame(emptyList(), emptyMap())
-
-        val stateAfterReplace = GameState(phase = GamePhase.AWAITING_DRAW)
-        val pos = mockk<BoardPosition>()
-        every { engine.replaceDrawnCard(stateAfterStart, pos) } returns stateAfterReplace
-        serviceWithRepo.replaceDrawnCard(pos)
-
-        verify(atLeast = 2) { repo.saveGame(any(), any()) }
-    }
-
-    @Test
-    fun `discardDrawnCardAndReveal persists state when repository present`() {
-        val repo: GameRepository = mockk()
-        every { repo.loadActiveGame() } returns null
-        val serviceWithRepo = SkyjoGameService(engine, repo)
-
-        val stateAfterStart = GameState(phase = GamePhase.AWAITING_REPLACEMENT)
-        every { engine.startGame(any(), any(), any()) } returns stateAfterStart
-        every { repo.saveGame(any(), any()) } just Runs
-        serviceWithRepo.startGame(emptyList(), emptyMap())
-
-        val stateAfterDiscard = GameState(phase = GamePhase.AWAITING_DRAW)
-        val pos = mockk<BoardPosition>()
-        every { engine.discardDrawnCardAndReveal(stateAfterStart, pos) } returns stateAfterDiscard
-        serviceWithRepo.discardDrawnCardAndReveal(pos)
-
-        verify(atLeast = 2) { repo.saveGame(any(), any()) }
-    }
 }
