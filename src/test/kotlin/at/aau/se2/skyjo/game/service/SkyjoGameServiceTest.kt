@@ -184,8 +184,43 @@ class SkyjoGameServiceTest {
 
         val result = service.playActionCard(command)
 
-        assertEquals(stateAfterPlay, result)
+        assertEquals(stateAfterPlay, result.gameState)
+        assertEquals(emptyMap<String, ActionCardResult>(), result.privateActionCardResults)
         assertEquals(stateAfterPlay, service.getGameState())
+        verify(exactly = 1) { engine.playActionCard(stateBeforePlay, command) }
+    }
+
+    @Test
+    fun playActionCardReturnsEnlightenmentResultOnlyPrivately() {
+        val stateBeforePlay = GameState(phase = GamePhase.AWAITING_DRAW)
+        val command = PlayActionCardCommand(actionCardIndex = 0)
+        val enlightenmentResult = ActionCardResult.Enlightenment(
+            actingPlayerId = "p1",
+            targetPlayerId = "p2",
+            targetType = BoardLineTargetType.ROW,
+            lineIndex = 0,
+            cards = listOf(
+                ViewedCard(
+                    position = BoardPosition(0, 0),
+                    card = SkyjoCard.NumberCard(id = 1, value = 5),
+                ),
+            ),
+        )
+        val resolvedState = GameState(
+            phase = GamePhase.AWAITING_DRAW,
+            actionCardResult = enlightenmentResult,
+        )
+        val publicState = resolvedState.copy(actionCardResult = null)
+
+        every { engine.startGame(any(), any(), any()) } returns stateBeforePlay
+        service.startGame(emptyList(), emptyMap())
+        every { engine.playActionCard(stateBeforePlay, command) } returns resolvedState
+
+        val result = service.playActionCard(command)
+
+        assertEquals(publicState, result.gameState)
+        assertEquals(mapOf("p1" to enlightenmentResult), result.privateActionCardResults)
+        assertEquals(publicState, service.getGameState())
         verify(exactly = 1) { engine.playActionCard(stateBeforePlay, command) }
     }
 

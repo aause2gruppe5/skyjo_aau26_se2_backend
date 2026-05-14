@@ -311,6 +311,47 @@ class SkyjoEngineTest {
         }
 
         @Test
+        fun playEnlightenmentOnlyReturnsFaceDownCardsAndLeavesBoardUnchanged(){
+            val targetRow = 2
+            val hiddenLeft = BoardPosition(targetRow, 0)
+            val faceUpMiddle = BoardPosition(targetRow, 1)
+            val hiddenRight = BoardPosition(targetRow, 2)
+            val faceUpRight = BoardPosition(targetRow, 3)
+            val actionCard = enlightenmentCard(151)
+            val originalBoard = mockPlayerBoardWithExplicitFaceUp(
+                positionValues = mapOf(
+                    hiddenLeft to 3,
+                    faceUpMiddle to 5,
+                    hiddenRight to 7,
+                    faceUpRight to 9,
+                ),
+                faceUpPositions = setOf(faceUpMiddle, faceUpRight),
+            )
+            val currentPlayer = mockPlayer("p1", originalBoard).copy(actionCards = listOf(actionCard))
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(currentPlayer, mockPlayer("p2")),
+            )
+
+            val result = engine.playActionCard(
+                state,
+                PlayActionCardCommand(
+                    actionCardIndex = 0,
+                    parameters = ActionCardParameters.BoardLineTarget(
+                        targetPlayerId = "p1",
+                        targetType = BoardLineTargetType.ROW,
+                        lineIndex = targetRow,
+                    ),
+                ),
+            )
+
+            val enlightenmentResult = result.actionCardResult as ActionCardResult.Enlightenment
+            assertThat(enlightenmentResult.cards.map { it.position }).containsExactly(hiddenLeft, hiddenRight)
+            assertThat(enlightenmentResult.cards.map { it.card.scoreValue() }).containsExactly(3, 7)
+            assertThat(result.players[0].board).isEqualTo(originalBoard)
+        }
+
+        @Test
         fun playEnlightenmentCanTargetColumnOnCurrentPlayerBoard(){
             val targetColumn = 2
             val actionCard = enlightenmentCard(151)
@@ -1213,6 +1254,20 @@ class SkyjoEngineTest {
             val value = positionValues[pos] ?: 0 // Nimm den definierten Wert oder 0
             val uniqueId = pos.row * BoardLayout.COLUMNS + pos.column
             BoardSlot.Occupied(SkyjoCard.NumberCard(id = uniqueId, value = value), faceUp = faceUp)
+        }
+        return PlayerBoard(slots)
+    }
+    private fun mockPlayerBoardWithExplicitFaceUp(
+        positionValues: Map<BoardPosition, Int>,
+        faceUpPositions: Set<BoardPosition>,
+    ): PlayerBoard {
+        val slots = BoardLayout.POSITIONS.associateWith { pos ->
+            val value = positionValues[pos] ?: 0
+            val uniqueId = pos.row * BoardLayout.COLUMNS + pos.column
+            BoardSlot.Occupied(
+                card = SkyjoCard.NumberCard(id = uniqueId, value = value),
+                faceUp = pos in faceUpPositions,
+            )
         }
         return PlayerBoard(slots)
     }
