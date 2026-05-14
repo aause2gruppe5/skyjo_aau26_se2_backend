@@ -1,4 +1,5 @@
 package at.aau.se2.skyjo.game.service
+import at.aau.se2.skyjo.game.error.InvalidMoveException
 import at.aau.se2.skyjo.game.model.*
 import io.mockk.every
 import io.mockk.mockk
@@ -7,6 +8,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 class SkyjoGameServiceTest {
     private val engine: SkyjoEngine = mockk()
@@ -221,6 +223,30 @@ class SkyjoGameServiceTest {
         assertEquals(publicState, result.gameState)
         assertEquals(mapOf("p1" to enlightenmentResult), result.privateActionCardResults)
         assertEquals(publicState, service.getGameState())
+        verify(exactly = 1) { engine.playActionCard(stateBeforePlay, command) }
+    }
+
+    @Test
+    fun failedPlayActionCardKeepsStoredGameStateUnchanged() {
+        val stateBeforePlay = GameState(phase = GamePhase.AWAITING_DRAW)
+        val command = PlayActionCardCommand(
+            actionCardIndex = 0,
+            parameters = ActionCardParameters.BoardLineTarget(
+                targetPlayerId = "missing",
+                targetType = BoardLineTargetType.ROW,
+                lineIndex = 0,
+            ),
+        )
+
+        every { engine.startGame(any(), any(), any()) } returns stateBeforePlay
+        service.startGame(emptyList(), emptyMap())
+        every { engine.playActionCard(stateBeforePlay, command) } throws InvalidMoveException("target player missing is not available")
+
+        assertThrows<InvalidMoveException> {
+            service.playActionCard(command)
+        }
+
+        assertEquals(stateBeforePlay, service.getGameState())
         verify(exactly = 1) { engine.playActionCard(stateBeforePlay, command) }
     }
 

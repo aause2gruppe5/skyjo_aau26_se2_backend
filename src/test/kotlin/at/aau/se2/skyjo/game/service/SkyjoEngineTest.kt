@@ -544,6 +544,38 @@ class SkyjoEngineTest {
         }
 
         @Test
+        fun failedEnlightenmentDoesNotConsumeCardAdvanceTurnOrChangeBoard(){
+            val actionCard = enlightenmentCard(151)
+            val originalBoard = mockPlayerBoard(faceUp = false)
+            val player = mockPlayer("p1", originalBoard).copy(actionCards = listOf(actionCard))
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(player, mockPlayer("p2")),
+            )
+
+            val exception = assertThrows<InvalidMoveException> {
+                engine.playActionCard(
+                    state,
+                    PlayActionCardCommand(
+                        actionCardIndex = 0,
+                        parameters = ActionCardParameters.BoardLineTarget(
+                            targetPlayerId = "p1",
+                            targetType = BoardLineTargetType.ROW,
+                            lineIndex = BoardLayout.ROWS,
+                        ),
+                    ),
+                )
+            }
+
+            assertThat(exception).hasMessageContaining("row index ${BoardLayout.ROWS} is not available")
+            assertThat(state.players[0].actionCards).containsExactly(actionCard)
+            assertThat(state.actionDiscardPile.cards).isEmpty()
+            assertThat(state.currentPlayerIndex).isEqualTo(0)
+            assertThat(state.players[0].board).isEqualTo(originalBoard)
+            assertThat(state.players[0].board.hiddenPositions()).containsExactlyElementsOf(originalBoard.hiddenPositions())
+        }
+
+        @Test
         fun playActionCardRejectsUnavailableIndex(){
             val state = mockGameState(phase = GamePhase.AWAITING_DRAW)
 
