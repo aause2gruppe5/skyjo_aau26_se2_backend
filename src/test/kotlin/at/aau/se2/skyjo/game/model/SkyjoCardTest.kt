@@ -31,4 +31,11 @@ class SkyjoCardTest {
 
         assertEquals("Action", card.displayLabel())
     }
+
+    @Test
+    fun enlightenmentDisplayLabelIsEnlightenment(){
+        val card = SkyjoCard.ActionCard.Enlightenment(id = 2)
+
+        assertEquals("Enlightenment", card.displayLabel())
+    }
 }

@@ -12,6 +12,13 @@ class ActionCardEffectTest {
     }
 
     @Test
+    fun enlightenmentActionCardMapsToEnlightenmentEffect(){
+        val card = SkyjoCard.ActionCard.Enlightenment(id = 1)
+
+        assertSame(ActionCardEffect.Enlightenment, card.toEffect())
+    }
+
+    @Test
     fun placeholderActionCardEffectKeepsStateUnchanged(){
         val state = GameState()
 

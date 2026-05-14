@@ -7,4 +7,15 @@ data class PlayActionCardCommand(
 
 sealed interface ActionCardParameters {
     data object None : ActionCardParameters
+
+    data class BoardLineTarget(
+        val targetPlayerId: String,
+        val targetType: BoardLineTargetType,
+        val lineIndex: Int,
+    ) : ActionCardParameters
+}
+
+enum class BoardLineTargetType {
+    ROW,
+    COLUMN,
 }

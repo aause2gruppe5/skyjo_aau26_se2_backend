@@ -82,6 +82,7 @@ class SkyjoEngine {
             drawnCard = drawResult.card,
             drawSource = DrawSource.DECK,
             phase = GamePhase.AWAITING_REPLACEMENT,
+            actionCardResult = null,
         )
     }
 
@@ -93,6 +94,7 @@ class SkyjoEngine {
             drawnCard = drawResult.card,
             drawSource = DrawSource.DISCARD,
             phase = GamePhase.AWAITING_REPLACEMENT,
+            actionCardResult = null,
         )
     }
 
@@ -126,6 +128,7 @@ class SkyjoEngine {
                 visibleActionCards = visibleActionCards,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
         )
     }
@@ -149,6 +152,7 @@ class SkyjoEngine {
                 actionDrawPile = drawResult.remainingPile,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
         )
     }
@@ -186,6 +190,7 @@ class SkyjoEngine {
                 discardPile = updatedDiscardPile,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
         )
     }
@@ -220,6 +225,7 @@ class SkyjoEngine {
                 discardPile = updatedDiscardPile,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
         )
     }
@@ -336,6 +342,7 @@ class SkyjoEngine {
             actionDiscardPile = playableState.actionDiscardPile.add(actionCard),
             drawnCard = null,
             drawSource = null,
+            actionCardResult = null,
         )
         val stateAfterAction = if (applyEffect) {
             actionCard.toEffect().apply(stateAfterDiscard, parameters)
@@ -423,6 +430,7 @@ class SkyjoEngine {
             drawSource = null,
             finalTurnsRemaining = 0,
             roundResult = roundResult,
+            actionCardResult = null,
         )
     }
 

@@ -262,6 +262,247 @@ class SkyjoEngineTest {
         }
 
         @Test
+        fun playEnlightenmentCanTargetRowOnCurrentPlayerBoard(){
+            val targetRow = 1
+            val actionCard = enlightenmentCard(151)
+            val currentPlayer = mockPlayer(
+                "p1",
+                mockPlayerBoardWithExplicitValues(
+                    mapOf(
+                        BoardPosition(targetRow, 0) to 2,
+                        BoardPosition(targetRow, 1) to 4,
+                        BoardPosition(targetRow, 2) to 6,
+                        BoardPosition(targetRow, 3) to 8,
+                    ),
+                    faceUp = false,
+                ),
+            ).copy(actionCards = listOf(actionCard))
+            val otherPlayer = mockPlayer("p2")
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(currentPlayer, otherPlayer),
+            )
+
+            val result = engine.playActionCard(
+                state,
+                PlayActionCardCommand(
+                    actionCardIndex = 0,
+                    parameters = ActionCardParameters.BoardLineTarget(
+                        targetPlayerId = "p1",
+                        targetType = BoardLineTargetType.ROW,
+                        lineIndex = targetRow,
+                    ),
+                ),
+            )
+
+            val enlightenmentResult = result.actionCardResult as ActionCardResult.Enlightenment
+            assertThat(enlightenmentResult.actingPlayerId).isEqualTo("p1")
+            assertThat(enlightenmentResult.targetPlayerId).isEqualTo("p1")
+            assertThat(enlightenmentResult.targetType).isEqualTo(BoardLineTargetType.ROW)
+            assertThat(enlightenmentResult.lineIndex).isEqualTo(targetRow)
+            assertThat(enlightenmentResult.cards.map { it.position }).containsExactlyElementsOf(BoardLayout.HORIZONTAL_LINES[targetRow])
+            assertThat(enlightenmentResult.cards.map { it.card.scoreValue() }).containsExactly(2, 4, 6, 8)
+            BoardLayout.HORIZONTAL_LINES[targetRow].forEach { position ->
+                assertThat((result.players[0].board.slotAt(position) as BoardSlot.Occupied).faceUp).isFalse()
+            }
+            assertThat(result.players[0].actionCards).isEmpty()
+            assertThat(result.actionDiscardPile.topCard()).isEqualTo(actionCard)
+            assertThat(result.currentPlayerIndex).isEqualTo(1)
+        }
+
+        @Test
+        fun playEnlightenmentCanTargetColumnOnCurrentPlayerBoard(){
+            val targetColumn = 2
+            val actionCard = enlightenmentCard(151)
+            val player = mockPlayer("p1").copy(actionCards = listOf(actionCard))
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(player, mockPlayer("p2")),
+            )
+
+            val result = engine.playActionCard(
+                state,
+                PlayActionCardCommand(
+                    actionCardIndex = 0,
+                    parameters = ActionCardParameters.BoardLineTarget(
+                        targetPlayerId = "p1",
+                        targetType = BoardLineTargetType.COLUMN,
+                        lineIndex = targetColumn,
+                    ),
+                ),
+            )
+
+            val enlightenmentResult = result.actionCardResult as ActionCardResult.Enlightenment
+            assertThat(enlightenmentResult.targetPlayerId).isEqualTo("p1")
+            assertThat(enlightenmentResult.targetType).isEqualTo(BoardLineTargetType.COLUMN)
+            assertThat(enlightenmentResult.lineIndex).isEqualTo(targetColumn)
+            assertThat(enlightenmentResult.cards.map { it.position }).containsExactlyElementsOf(BoardLayout.VERTICAL_LINES[targetColumn])
+        }
+
+        @Test
+        fun playEnlightenmentCanTargetRowOnAnotherPlayerBoard(){
+            val targetRow = 0
+            val actionCard = enlightenmentCard(151)
+            val currentPlayer = mockPlayer("p1").copy(actionCards = listOf(actionCard))
+            val otherPlayer = mockPlayer(
+                "p2",
+                mockPlayerBoardWithExplicitValues(
+                    mapOf(
+                        BoardPosition(targetRow, 0) to 10,
+                        BoardPosition(targetRow, 1) to 11,
+                    ),
+                    faceUp = false,
+                ),
+            )
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(currentPlayer, otherPlayer),
+            )
+
+            val result = engine.playActionCard(
+                state,
+                PlayActionCardCommand(
+                    actionCardIndex = 0,
+                    parameters = ActionCardParameters.BoardLineTarget(
+                        targetPlayerId = "p2",
+                        targetType = BoardLineTargetType.ROW,
+                        lineIndex = targetRow,
+                    ),
+                ),
+            )
+
+            val enlightenmentResult = result.actionCardResult as ActionCardResult.Enlightenment
+            assertThat(enlightenmentResult.actingPlayerId).isEqualTo("p1")
+            assertThat(enlightenmentResult.targetPlayerId).isEqualTo("p2")
+            assertThat(enlightenmentResult.cards.map { it.position }).containsExactlyElementsOf(BoardLayout.HORIZONTAL_LINES[targetRow])
+            assertThat(result.players[1].board).isEqualTo(otherPlayer.board)
+        }
+
+        @Test
+        fun playEnlightenmentCanTargetColumnOnAnotherPlayerBoard(){
+            val targetColumn = 1
+            val actionCard = enlightenmentCard(151)
+            val currentPlayer = mockPlayer("p1").copy(actionCards = listOf(actionCard))
+            val otherPlayer = mockPlayer("p2")
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(currentPlayer, otherPlayer),
+            )
+
+            val result = engine.playActionCard(
+                state,
+                PlayActionCardCommand(
+                    actionCardIndex = 0,
+                    parameters = ActionCardParameters.BoardLineTarget(
+                        targetPlayerId = "p2",
+                        targetType = BoardLineTargetType.COLUMN,
+                        lineIndex = targetColumn,
+                    ),
+                ),
+            )
+
+            val enlightenmentResult = result.actionCardResult as ActionCardResult.Enlightenment
+            assertThat(enlightenmentResult.targetPlayerId).isEqualTo("p2")
+            assertThat(enlightenmentResult.targetType).isEqualTo(BoardLineTargetType.COLUMN)
+            assertThat(enlightenmentResult.cards.map { it.position }).containsExactlyElementsOf(BoardLayout.VERTICAL_LINES[targetColumn])
+            assertThat(result.players[1].board).isEqualTo(otherPlayer.board)
+        }
+
+        @Test
+        fun playEnlightenmentRejectsInvalidRowIndex(){
+            val actionCard = enlightenmentCard(151)
+            val player = mockPlayer("p1").copy(actionCards = listOf(actionCard))
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(player, mockPlayer("p2")),
+            )
+
+            val exception = assertThrows<InvalidMoveException> {
+                engine.playActionCard(
+                    state,
+                    PlayActionCardCommand(
+                        actionCardIndex = 0,
+                        parameters = ActionCardParameters.BoardLineTarget(
+                            targetPlayerId = "p1",
+                            targetType = BoardLineTargetType.ROW,
+                            lineIndex = BoardLayout.ROWS,
+                        ),
+                    ),
+                )
+            }
+
+            assertThat(exception).hasMessageContaining("row index ${BoardLayout.ROWS} is not available")
+        }
+
+        @Test
+        fun playEnlightenmentRejectsInvalidColumnIndex(){
+            val actionCard = enlightenmentCard(151)
+            val player = mockPlayer("p1").copy(actionCards = listOf(actionCard))
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(player, mockPlayer("p2")),
+            )
+
+            val exception = assertThrows<InvalidMoveException> {
+                engine.playActionCard(
+                    state,
+                    PlayActionCardCommand(
+                        actionCardIndex = 0,
+                        parameters = ActionCardParameters.BoardLineTarget(
+                            targetPlayerId = "p1",
+                            targetType = BoardLineTargetType.COLUMN,
+                            lineIndex = BoardLayout.COLUMNS,
+                        ),
+                    ),
+                )
+            }
+
+            assertThat(exception).hasMessageContaining("column index ${BoardLayout.COLUMNS} is not available")
+        }
+
+        @Test
+        fun playEnlightenmentRejectsInvalidTargetPlayer(){
+            val actionCard = enlightenmentCard(151)
+            val player = mockPlayer("p1").copy(actionCards = listOf(actionCard))
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(player, mockPlayer("p2")),
+            )
+
+            val exception = assertThrows<InvalidMoveException> {
+                engine.playActionCard(
+                    state,
+                    PlayActionCardCommand(
+                        actionCardIndex = 0,
+                        parameters = ActionCardParameters.BoardLineTarget(
+                            targetPlayerId = "missing",
+                            targetType = BoardLineTargetType.ROW,
+                            lineIndex = 0,
+                        ),
+                    ),
+                )
+            }
+
+            assertThat(exception).hasMessageContaining("target player missing is not available")
+        }
+
+        @Test
+        fun playEnlightenmentRequiresBoardLineTarget(){
+            val actionCard = enlightenmentCard(151)
+            val player = mockPlayer("p1").copy(actionCards = listOf(actionCard))
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(player, mockPlayer("p2")),
+            )
+
+            val exception = assertThrows<InvalidMoveException> {
+                engine.playActionCard(state, PlayActionCardCommand(actionCardIndex = 0))
+            }
+
+            assertThat(exception).hasMessageContaining("enlightenment requires a board row or column target")
+        }
+
+        @Test
         fun playActionCardRejectsUnavailableIndex(){
             val state = mockGameState(phase = GamePhase.AWAITING_DRAW)
 
@@ -945,6 +1186,7 @@ class SkyjoEngineTest {
     private fun mockPosition(col: Int = 0, row: Int = 0) = BoardPosition(col, row)
     private fun mockCard(id: Int = 1, value: Int = 1) = SkyjoCard.NumberCard(id, value)
     private fun actionCard(id: Int = 151) = SkyjoCard.ActionCard.Placeholder(id)
+    private fun enlightenmentCard(id: Int = 151) = SkyjoCard.ActionCard.Enlightenment(id)
     private fun mockPlayer(id: String = "p1", board: PlayerBoard = mockPlayerBoard()) = PlayerState(id, board)
     private fun mockPlayerBoard(defaultValue: Int = 0, faceUp: Boolean = false): PlayerBoard {
         val slots = BoardLayout.POSITIONS.associateWith{pos ->
@@ -963,11 +1205,14 @@ class SkyjoEngineTest {
         }.toMap()
         return PlayerBoard(slots)
     }
-    private fun mockPlayerBoardWithExplicitValues(positionValues: Map<BoardPosition, Int>): PlayerBoard {
+    private fun mockPlayerBoardWithExplicitValues(
+        positionValues: Map<BoardPosition, Int>,
+        faceUp: Boolean = true,
+    ): PlayerBoard {
         val slots = BoardLayout.POSITIONS.associateWith { pos ->
             val value = positionValues[pos] ?: 0 // Nimm den definierten Wert oder 0
             val uniqueId = pos.row * BoardLayout.COLUMNS + pos.column
-            BoardSlot.Occupied(SkyjoCard.NumberCard(id = uniqueId, value = value), faceUp = true)
+            BoardSlot.Occupied(SkyjoCard.NumberCard(id = uniqueId, value = value), faceUp = faceUp)
         }
         return PlayerBoard(slots)
     }
