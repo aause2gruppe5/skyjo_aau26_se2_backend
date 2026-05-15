@@ -7,10 +7,19 @@ data class GameActionMessage(
     val source: DrawSource? = null,
     val row: Int? = null,
     val col: Int? = null,
+    val actionCardIndex: Int? = null,
+    val targetPlayer1Id: String? = null,
+    val targetPlayer1Row: Int? = null,
+    val targetPlayer1Col: Int? = null,
+    val targetPlayer2Id: String? = null,
+    val targetPlayer2Row: Int? = null,
+    val targetPlayer2Col: Int? = null,
 )
 
 enum class ActionType {
     DRAW,
     REPLACE,
     DISCARD_AND_REVEAL,
+    PLAY_ACTION_CARD,
+    DISCARD_ACTION_CARD,
 }
