@@ -95,7 +95,6 @@ data class PlayerBoard(
         if (occupiedSlots.any { !it.faceUp }) {
             return false
         }
-
         return occupiedSlots.map { it.card.scoreValue() }.distinct().size == 1
     }
 
