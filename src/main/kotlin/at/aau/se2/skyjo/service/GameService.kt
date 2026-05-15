@@ -165,6 +165,12 @@ class GameService(
                 playerId = playerState.id,
                 nickname = playerInfo[playerState.id] ?: playerState.id,
                 board = rows,
+                actionCardTypes = playerState.actionCards.map { card ->
+                    when (card) {
+                        is SkyjoCard.ActionCard.PlayerSwapCard -> "PLAYER_SWAP"
+                        is SkyjoCard.ActionCard.Placeholder -> "PLACEHOLDER"
+                    }
+                },
             )
         }
 

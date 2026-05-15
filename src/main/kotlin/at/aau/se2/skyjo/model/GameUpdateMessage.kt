@@ -21,6 +21,7 @@ data class PlayerBoardDto(
     val playerId: String,
     val nickname: String,
     val board: List<List<BoardSlotDto>>,
+    val actionCardTypes: List<String> = emptyList(),
 )
 
 data class BoardSlotDto(
