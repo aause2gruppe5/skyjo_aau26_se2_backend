@@ -9,6 +9,8 @@ data class GameUpdateMessage(
     val players: List<PlayerBoardDto>,
     val discardTopCard: CardDto?,
     val drawnCard: CardDto?,
+    val visibleActionCards: List<ActionCardDto> = emptyList(),
+    val actionDrawPileCount: Int = 0,
     val roundResult: RoundResult?,
     val roundNumber: Int,
     val totalScores: List<PlayerScoreDto>,
@@ -21,6 +23,7 @@ data class PlayerBoardDto(
     val playerId: String,
     val nickname: String,
     val board: List<List<BoardSlotDto>>,
+    val actionCards: List<ActionCardDto> = emptyList(),
 )
 
 data class BoardSlotDto(
@@ -38,6 +41,15 @@ data class CardDto(
 )
 
 enum class CardType { NUMBER, ACTION }
+
+data class ActionCardDto(
+    val id: Int,
+    val kind: ActionCardKind,
+    val label: String,
+    val value: Int,
+)
+
+enum class ActionCardKind { ENLIGHTENMENT, PLACEHOLDER }
 
 data class PlayerScoreDto(
     val playerId: String,

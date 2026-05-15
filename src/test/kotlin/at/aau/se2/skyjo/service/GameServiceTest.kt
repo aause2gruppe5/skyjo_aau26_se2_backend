@@ -12,6 +12,7 @@ import at.aau.se2.skyjo.game.model.PlayerBoard
 import at.aau.se2.skyjo.game.model.PlayerState
 import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.SkyjoCard
+import at.aau.se2.skyjo.model.ActionCardKind
 import at.aau.se2.skyjo.game.service.SkyjoEngine
 import at.aau.se2.skyjo.model.ActionCardResultType
 import at.aau.se2.skyjo.model.ActionType
@@ -94,6 +95,17 @@ class GameServiceTest {
             assertEquals(3, player.board.size)
             player.board.forEach { row -> assertEquals(4, row.size) }
         }
+    }
+
+    @Test
+    fun `startGame exposes visible action cards and empty player hands`() {
+        val result = service.startGame(players)
+
+        assertEquals(4, result.visibleActionCards.size)
+        assertEquals(16, result.actionDrawPileCount)
+        assertTrue(result.visibleActionCards.all { it.value == 10 })
+        assertTrue(result.visibleActionCards.all { it.kind in setOf(ActionCardKind.ENLIGHTENMENT, ActionCardKind.PLACEHOLDER) })
+        assertTrue(result.players.all { it.actionCards.isEmpty() })
     }
 
     // ── processAction – error handling ────────────────────────────────────
@@ -200,6 +212,40 @@ class GameServiceTest {
     }
 
     @Test
+    fun `processAction DRAW from ACTION_DECK adds card to current player's action hand`() {
+        service.startGame(players)
+        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK),
+        )
+
+        val player = result.players.first { it.playerId == currentPlayerId }
+        assertEquals(1, player.actionCards.size)
+        assertEquals(15, result.actionDrawPileCount)
+        assertEquals(10, player.actionCards.single().value)
+    }
+
+    @Test
+    fun `processAction DRAW_VISIBLE_ACTION_CARD adds selected visible card to current player's action hand`() {
+        service.startGame(players)
+        val stateBeforeDraw = service.getCurrentState()!!
+        val currentPlayerId = stateBeforeDraw.currentPlayerId!!
+        val visibleCard = stateBeforeDraw.visibleActionCards.first()
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.DRAW_VISIBLE_ACTION_CARD, actionCardIndex = 0),
+        )
+
+        val player = result.players.first { it.playerId == currentPlayerId }
+        assertEquals(visibleCard.id, player.actionCards.single().id)
+        assertEquals(4, result.visibleActionCards.size)
+        assertEquals(15, result.actionDrawPileCount)
+    }
+
+    @Test
     fun `processAction REPLACE reveals placed card on board`() {
         service.startGame(players)
         val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
@@ -256,6 +302,7 @@ class GameServiceTest {
         val publicRow = result.gameUpdate.players.first { it.playerId == player1Id }.board[targetRow]
         assertTrue(publicRow.all { it.faceUp == false })
         assertTrue(publicRow.all { it.card == null })
+        assertTrue(result.gameUpdate.players.first { it.playerId == player1Id }.actionCards.isEmpty())
 
         val storedState = getInternalGameState(service)
         BoardLayout.HORIZONTAL_LINES[targetRow].forEach { position ->
