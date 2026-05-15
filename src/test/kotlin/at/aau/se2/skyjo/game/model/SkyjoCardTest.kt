@@ -31,4 +31,16 @@ class SkyjoCardTest {
 
         assertEquals("Action", card.displayLabel())
     }
+
+    @Test
+    fun `PlayerSwapCard scoreValue is ACTION_CARD_SCORE`() {
+        val card = SkyjoCard.ActionCard.PlayerSwapCard(id = 99)
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
+    fun `PlayerSwapCard displayLabel is Swap`() {
+        val card = SkyjoCard.ActionCard.PlayerSwapCard(id = 99)
+        assertEquals("Swap", card.displayLabel())
+    }
 }
