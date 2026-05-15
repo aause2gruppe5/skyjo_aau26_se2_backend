@@ -80,4 +80,19 @@ class SkyjoDeckFactoryTest {
 
         assertNotEquals(pile1.cards, pile2.cards)
     }
+
+    @Test
+    fun `action draw pile contains only PlayerSwapCards`() {
+        val actionPile = SkyjoDeckFactory.createShuffledActionDrawPile(seed = 1L)
+        var remaining = actionPile
+        val allCards = buildList {
+            while (remaining.size > 0) {
+                val result = remaining.draw()
+                add(result.card)
+                remaining = result.remainingPile
+            }
+        }
+        assertTrue(allCards.all { it is SkyjoCard.ActionCard.PlayerSwapCard })
+        assertEquals(21, allCards.size)
+    }
 }
