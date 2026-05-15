@@ -82,7 +82,7 @@ class SkyjoDeckFactoryTest {
     }
 
     @Test
-    fun `action draw pile contains only PlayerSwapCards`() {
+    fun `action draw pile has gated PlayerSwap cards and Placeholders`() {
         val actionPile = SkyjoDeckFactory.createShuffledActionDrawPile(seed = 1L)
         var remaining = actionPile
         val allCards = buildList {
@@ -92,7 +92,9 @@ class SkyjoDeckFactoryTest {
                 remaining = result.remainingPile
             }
         }
-        assertTrue(allCards.all { it is SkyjoCard.ActionCard.PlayerSwapCard })
         assertEquals(21, allCards.size)
+        assertEquals(3, allCards.count { it is SkyjoCard.ActionCard.PlayerSwapCard })
+        assertEquals(18, allCards.count { it is SkyjoCard.ActionCard.Placeholder })
+        assertTrue(allCards.all { it is SkyjoCard.ActionCard })
     }
 }
