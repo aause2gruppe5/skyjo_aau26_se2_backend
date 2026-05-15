@@ -21,7 +21,6 @@ object SkyjoDeckFactory {
                 SkyjoCard.NumberCard(id = index + 1, value = value)
             }
             .shuffled(random)
-
         return DrawPile(cards)
     }
 
@@ -30,9 +29,7 @@ object SkyjoDeckFactory {
         val numberCardCount = cardDistribution.size
         val actionCards = List(ACTION_CARD_COUNT) { index ->
             SkyjoCard.ActionCard.Placeholder(id = numberCardCount + index + 1)
-        }
-            .shuffled(random)
-
+        }.shuffled(random)
         return ActionDrawPile(actionCards)
     }
 }
