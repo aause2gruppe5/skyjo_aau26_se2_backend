@@ -13,6 +13,7 @@ object SkyjoDeckFactory {
     }
 
     private const val ACTION_CARD_COUNT = 21
+    private const val ENLIGHTENMENT_CARD_COUNT = 3
 
     fun createShuffledDrawPile(seed: Long? = null): DrawPile {
         val random = seed?.let { Random(it) } ?: Random.Default
@@ -28,7 +29,11 @@ object SkyjoDeckFactory {
         val random = seed?.let { Random(it + 1L) } ?: Random.Default
         val numberCardCount = cardDistribution.size
         val actionCards = List(ACTION_CARD_COUNT) { index ->
-            SkyjoCard.ActionCard.Enlightenment(id = numberCardCount + index + 1)
+            val id = numberCardCount + index + 1
+            when {
+                index < ENLIGHTENMENT_CARD_COUNT -> SkyjoCard.ActionCard.Enlightenment(id)
+                else -> SkyjoCard.ActionCard.Placeholder(id)
+            }
         }.shuffled(random)
         return ActionDrawPile(actionCards)
     }

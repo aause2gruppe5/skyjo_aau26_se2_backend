@@ -5,6 +5,10 @@ import at.aau.se2.skyjo.game.error.InvalidMoveException
 sealed interface ActionCardEffect {
     fun apply(state: GameState, parameters: ActionCardParameters): GameState
 
+    data object Placeholder : ActionCardEffect {
+        override fun apply(state: GameState, parameters: ActionCardParameters): GameState = state
+    }
+
     data object Enlightenment : ActionCardEffect {
         override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
             val target = parameters as? ActionCardParameters.BoardLineTarget
@@ -37,6 +41,7 @@ sealed interface ActionCardEffect {
 fun SkyjoCard.ActionCard.toEffect(): ActionCardEffect =
     when (this) {
         is SkyjoCard.ActionCard.Enlightenment -> ActionCardEffect.Enlightenment
+        is SkyjoCard.ActionCard.Placeholder -> ActionCardEffect.Placeholder
     }
 
 private fun ActionCardParameters.BoardLineTarget.positions(): List<BoardPosition> =
