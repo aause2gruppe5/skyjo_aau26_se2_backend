@@ -14,5 +14,5 @@ sealed interface ActionCardResult {
 
 data class ViewedCard(
     val position: BoardPosition,
-    val card: SkyjoCard.PlayingCard,
+    val card: SkyjoCard.PlayingCard?,
 )

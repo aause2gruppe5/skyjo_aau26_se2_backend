@@ -15,13 +15,15 @@ sealed interface ActionCardEffect {
                 ?: throw InvalidMoveException("enlightenment requires a board row or column target")
             val actingPlayerId = state.currentPlayerId
                 ?: throw InvalidMoveException("current player is not available")
-            val targetPlayer = state.players.firstOrNull { it.id == target.targetPlayerId }
-                ?: throw InvalidMoveException("target player ${target.targetPlayerId} is not available")
+            if (target.targetPlayerId != actingPlayerId) {
+                throw InvalidMoveException("enlightenment can only inspect the acting player's own board")
+            }
+            val targetPlayer = state.currentPlayer()
             val targetPositions = target.positions()
-            val viewedCards = targetPositions.mapNotNull { position ->
+            val viewedCards = targetPositions.map { position ->
                 when (val slot = targetPlayer.board.slotAt(position)) {
-                    is BoardSlot.Cleared -> null
-                    is BoardSlot.Occupied -> if (slot.faceUp) null else ViewedCard(position, slot.card)
+                    is BoardSlot.Cleared -> ViewedCard(position, null)
+                    is BoardSlot.Occupied -> ViewedCard(position, slot.card)
                 }
             }
 

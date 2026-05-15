@@ -6,18 +6,24 @@ import at.aau.se2.skyjo.game.model.BoardSlot
 import at.aau.se2.skyjo.game.model.DrawSource
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.SkyjoCard
+import at.aau.se2.skyjo.game.model.ActionCardResult
 import at.aau.se2.skyjo.game.model.scoreValue
 import at.aau.se2.skyjo.game.service.SkyjoEngine
 import at.aau.se2.skyjo.model.ActionType
+import at.aau.se2.skyjo.model.ActionCardResultMessage
+import at.aau.se2.skyjo.model.ActionCardResultType
 import at.aau.se2.skyjo.model.BoardSlotDto
 import at.aau.se2.skyjo.model.CardDto
 import at.aau.se2.skyjo.model.CardType
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameConfig
 import at.aau.se2.skyjo.model.GameUpdateMessage
+import at.aau.se2.skyjo.model.InspectedCardDto
 import at.aau.se2.skyjo.model.PlayerBoardDto
 import at.aau.se2.skyjo.model.PlayerScoreDto
+import at.aau.se2.skyjo.model.PlayActionCardMessageResult
 import at.aau.se2.skyjo.model.SlotType
 import at.aau.se2.skyjo.model.lobby.LobbyPlayer
 import at.aau.se2.skyjo.persistence.GameRepository
@@ -120,6 +126,35 @@ class GameService(
         toUpdateMessage(updatedState, gameOver = false)
     }
 
+    fun playActionCard(playerId: String, command: PlayActionCardCommand): PlayActionCardMessageResult = lock.withLock {
+        val state = gameState ?: error("game has not started yet")
+        val resolvedPlayerId = sessionAliases[playerId] ?: playerId
+
+        if (state.currentPlayerId != resolvedPlayerId) {
+            error("not your turn (current player: ${state.currentPlayerId})")
+        }
+
+        val updatedStateWithResult = engine.playActionCard(state, command)
+        val privateResults = updatedStateWithResult.actionCardResult
+            ?.let { result -> mapOf(playerId to result.toMessage(command.actionCardIndex)) }
+            ?: emptyMap()
+        val updatedState = updatedStateWithResult.copy(actionCardResult = null)
+
+        gameState = updatedState
+        currentGameId?.let { gameRepository?.saveGame(it, updatedState) }
+
+        val update = if (updatedState.phase == GamePhase.ROUND_FINISHED) {
+            handleRoundFinished(updatedState)
+        } else {
+            toUpdateMessage(updatedState, gameOver = false)
+        }
+
+        PlayActionCardMessageResult(
+            gameUpdate = update,
+            privateActionCardResults = privateResults,
+        )
+    }
+
     fun getCurrentState(): GameUpdateMessage? = lock.withLock {
         gameState?.let { toUpdateMessage(it, gameOver = false) }
     }
@@ -195,5 +230,28 @@ class GameService(
         when (card) {
             is SkyjoCard.NumberCard -> CardDto(id = card.id, value = card.value, type = CardType.NUMBER)
             is SkyjoCard.ActionCard -> CardDto(id = card.id, value = card.scoreValue(), type = CardType.ACTION)
+        }
+
+    private fun ActionCardResult.toMessage(actionCardIndex: Int): ActionCardResultMessage =
+        when (this) {
+            is ActionCardResult.Enlightenment -> {
+                val inspectedCards = cards.map { viewedCard ->
+                    InspectedCardDto(
+                        row = viewedCard.position.row,
+                        col = viewedCard.position.column,
+                        value = viewedCard.card?.scoreValue(),
+                        card = viewedCard.card?.let(::toCardDto),
+                    )
+                }
+                ActionCardResultMessage(
+                    type = ActionCardResultType.ENLIGHTENMENT,
+                    actionCardIndex = actionCardIndex,
+                    targetPlayerId = targetPlayerId,
+                    targetType = targetType,
+                    lineIndex = lineIndex,
+                    inspectedValues = inspectedCards.map { it.value },
+                    inspectedCards = inspectedCards,
+                )
+            }
         }
 }

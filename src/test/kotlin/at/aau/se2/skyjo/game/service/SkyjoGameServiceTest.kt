@@ -198,7 +198,7 @@ class SkyjoGameServiceTest {
         val command = PlayActionCardCommand(actionCardIndex = 0)
         val enlightenmentResult = ActionCardResult.Enlightenment(
             actingPlayerId = "p1",
-            targetPlayerId = "p2",
+            targetPlayerId = "p1",
             targetType = BoardLineTargetType.ROW,
             lineIndex = 0,
             cards = listOf(

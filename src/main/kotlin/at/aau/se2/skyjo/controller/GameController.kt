@@ -1,5 +1,6 @@
 package at.aau.se2.skyjo.controller
 
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.service.GameService
 import org.slf4j.LoggerFactory
@@ -28,6 +29,28 @@ class GameController(
             val updatedState = gameService.processAction(playerId, action)
             logger.info("Game action ${action.type} by $playerId")
             messagingTemplate.convertAndSend("/topic/game", updatedState)
+        }.onFailure { e ->
+            messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
+        }
+    }
+
+    @MessageMapping("/game.action-card")
+    fun playActionCard(
+        @Payload command: PlayActionCardCommand,
+        headerAccessor: SimpMessageHeaderAccessor,
+    ) {
+        val playerId = headerAccessor.user?.name ?: return
+        runCatching {
+            val result = gameService.playActionCard(playerId, command)
+            logger.info("Action card ${command.actionCardIndex} played by $playerId")
+            messagingTemplate.convertAndSend("/topic/game", result.gameUpdate)
+            result.privateActionCardResults.forEach { (recipientPlayerId, actionCardResult) ->
+                messagingTemplate.convertAndSendToUser(
+                    recipientPlayerId,
+                    "/queue/action-card-results",
+                    actionCardResult,
+                )
+            }
         }.onFailure { e ->
             messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
         }
