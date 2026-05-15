@@ -1,11 +1,13 @@
 package at.aau.se2.skyjo.service
 
+import at.aau.se2.skyjo.game.model.ActionCardParameters
 import at.aau.se2.skyjo.game.model.BoardLayout
 import at.aau.se2.skyjo.game.model.BoardPosition
 import at.aau.se2.skyjo.game.model.BoardSlot
 import at.aau.se2.skyjo.game.model.DrawSource
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.SkyjoCard
 import at.aau.se2.skyjo.game.model.scoreValue
 import at.aau.se2.skyjo.game.service.SkyjoEngine
@@ -107,6 +109,40 @@ class GameService(
                 val row = action.row ?: error("row required for DISCARD_AND_REVEAL action")
                 val col = action.col ?: error("col required for DISCARD_AND_REVEAL action")
                 engine.discardDrawnCardAndReveal(state, BoardPosition(row, col))
+            }
+            ActionType.PLAY_ACTION_CARD -> {
+                val cardIndex = action.actionCardIndex
+                    ?: error("actionCardIndex required for PLAY_ACTION_CARD")
+                val p1Id = action.targetPlayer1Id
+                    ?: error("targetPlayer1Id required for PLAY_ACTION_CARD")
+                val p1Row = action.targetPlayer1Row
+                    ?: error("targetPlayer1Row required for PLAY_ACTION_CARD")
+                val p1Col = action.targetPlayer1Col
+                    ?: error("targetPlayer1Col required for PLAY_ACTION_CARD")
+                val p2Id = action.targetPlayer2Id
+                    ?: error("targetPlayer2Id required for PLAY_ACTION_CARD")
+                val p2Row = action.targetPlayer2Row
+                    ?: error("targetPlayer2Row required for PLAY_ACTION_CARD")
+                val p2Col = action.targetPlayer2Col
+                    ?: error("targetPlayer2Col required for PLAY_ACTION_CARD")
+
+                engine.playActionCard(
+                    state,
+                    PlayActionCardCommand(
+                        actionCardIndex = cardIndex,
+                        parameters = ActionCardParameters.PlayerSwap(
+                            player1Id = p1Id,
+                            player1Position = BoardPosition(p1Row, p1Col),
+                            player2Id = p2Id,
+                            player2Position = BoardPosition(p2Row, p2Col),
+                        ),
+                    ),
+                )
+            }
+            ActionType.DISCARD_ACTION_CARD -> {
+                val cardIndex = action.actionCardIndex
+                    ?: error("actionCardIndex required for DISCARD_ACTION_CARD")
+                engine.discardActionCard(state, cardIndex)
             }
         }
 

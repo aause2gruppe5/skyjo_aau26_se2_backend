@@ -281,6 +281,124 @@ class GameServiceTest {
 
         assertNotNull(service.getCurrentState())
     }
+
+    // ── DISCARD_ACTION_CARD ───────────────────────────────────────────────────
+
+    @Test
+    fun `processAction DISCARD_ACTION_CARD throws when actionCardIndex is missing`() {
+        service.startGame(players)
+        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
+
+        // Give current player an action card by drawing from the action deck
+        service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK)
+        )
+
+        // Re-create to test missing index error directly
+        val s3 = GameService(SkyjoEngine(), null)
+        s3.startGame(players)
+        val pid3 = s3.getCurrentState()!!.currentPlayerId!!
+        s3.processAction(pid3, GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK))
+
+        val nextPid = s3.getCurrentState()!!.currentPlayerId!!
+        val ex = assertThrows<IllegalStateException> {
+            s3.processAction(nextPid, GameActionMessage(ActionType.DISCARD_ACTION_CARD))
+        }
+        assertTrue(ex.message!!.contains("actionCardIndex required"))
+    }
+
+    @Test
+    fun `processAction DISCARD_ACTION_CARD removes card from player hand and advances turn`() {
+        service.startGame(players)
+        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
+
+        // Draw an action card (this advances turn)
+        service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK)
+        )
+
+        // Now the other player's turn — draw action card for them too
+        val otherPlayerId = service.getCurrentState()!!.currentPlayerId!!
+        service.processAction(
+            otherPlayerId,
+            GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK)
+        )
+
+        // Back to first player — they have an action card; discard it
+        val pid = service.getCurrentState()!!.currentPlayerId!!
+        val stateBefore = service.getCurrentState()!!
+        val playerBefore = stateBefore.players.find { it.playerId == pid }!!
+        assertEquals(1, playerBefore.actionCardTypes.size)
+
+        val result = service.processAction(
+            pid,
+            GameActionMessage(ActionType.DISCARD_ACTION_CARD, actionCardIndex = 0)
+        )
+
+        val playerAfter = result.players.find { it.playerId == pid }!!
+        assertEquals(0, playerAfter.actionCardTypes.size)
+    }
+
+    // ── PLAY_ACTION_CARD ─────────────────────────────────────────────────────
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD throws when actionCardIndex is missing`() {
+        service.startGame(players)
+        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
+        service.processAction(currentPlayerId, GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK))
+
+        val nextPid = service.getCurrentState()!!.currentPlayerId!!
+        service.processAction(nextPid, GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK))
+
+        val pid = service.getCurrentState()!!.currentPlayerId!!
+        val ex = assertThrows<IllegalStateException> {
+            service.processAction(pid, GameActionMessage(ActionType.PLAY_ACTION_CARD))
+        }
+        assertTrue(ex.message!!.contains("actionCardIndex required"))
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD performs swap and advances turn`() {
+        service.startGame(players)
+
+        // Let first player draw an action card
+        val pid1 = service.getCurrentState()!!.currentPlayerId!!
+        service.processAction(pid1, GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK))
+
+        // Let second player draw an action card so we return to pid1
+        val pid2 = service.getCurrentState()!!.currentPlayerId!!
+        service.processAction(pid2, GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK))
+
+        // pid1's turn — play the PlayerSwap action card
+        val pid = service.getCurrentState()!!.currentPlayerId!!
+        val stateBeforePlay = service.getCurrentState()!!
+
+        // Pick positions — we just need two different players and their (0,0) positions
+        val p1 = stateBeforePlay.players.find { it.playerId == pid }!!
+        val p2 = stateBeforePlay.players.find { it.playerId != pid }!!
+
+        val result = service.processAction(
+            pid,
+            GameActionMessage(
+                type = ActionType.PLAY_ACTION_CARD,
+                actionCardIndex = 0,
+                targetPlayer1Id = p1.playerId,
+                targetPlayer1Row = 0,
+                targetPlayer1Col = 0,
+                targetPlayer2Id = p2.playerId,
+                targetPlayer2Row = 0,
+                targetPlayer2Col = 0,
+            )
+        )
+
+        // Turn must have advanced
+        assertNotEquals(pid, result.currentPlayerId)
+        // The player who played the card should now have 0 action cards
+        val playerAfter = result.players.find { it.playerId == pid }!!
+        assertEquals(0, playerAfter.actionCardTypes.size)
+    }
 }
 
 // Helpers to access internal state for test setup
