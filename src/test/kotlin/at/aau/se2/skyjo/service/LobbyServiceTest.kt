@@ -40,6 +40,14 @@ class LobbyServiceTest {
     }
 
     @Test
+    fun `joining with a nickname already in use throws error`() {
+        service.join("s1", "Alice")
+
+        val ex = assertThrows<IllegalStateException> { service.join("s2", "alice") }
+        assertTrue(ex.message!!.contains("already in use"))
+    }
+
+    @Test
     fun `joining full lobby throws error`() {
         for (i in 1..6) service.join("s$i", "Player$i")
 

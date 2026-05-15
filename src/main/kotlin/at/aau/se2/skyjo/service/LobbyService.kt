@@ -23,6 +23,9 @@ class LobbyService {
         if (state.players.any { it.sessionId == sessionId }) {
             return state
         }
+        if (state.players.any { it.nickname.equals(nickname, ignoreCase = true) }) {
+            error("Nickname '$nickname' is already in use")
+        }
 
         val isHost = state.players.isEmpty()
         val player = LobbyPlayer(sessionId = sessionId, nickname = nickname, isHost = isHost)

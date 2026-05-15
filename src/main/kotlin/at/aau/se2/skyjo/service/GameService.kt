@@ -46,9 +46,11 @@ class GameService(
     fun getActiveGameId(): String? = currentGameId
 
     fun markPlayerDisconnected(principalId: String) {
-        val nickname = playerInfo[principalId] ?: return
-        disconnectedNicknames.add(nickname)
-        gameRepository?.markDisconnected(nickname)
+        lock.withLock {
+            val nickname = playerInfo[principalId] ?: return@withLock
+            disconnectedNicknames.add(nickname)
+            gameRepository?.markDisconnected(nickname)
+        }
     }
 
     fun addSessionAlias(newSessionId: String, nickname: String): Boolean = lock.withLock {

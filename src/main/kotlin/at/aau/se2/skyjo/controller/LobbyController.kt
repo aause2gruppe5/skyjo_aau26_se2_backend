@@ -54,13 +54,8 @@ class LobbyController(
                 error("Name has to be between 1 and 15 characters.")
             }
 
-            // Uniqueness: Prüfen, ob der Name in der Lobby schon existiert
-            val currentState = lobbyService.getState()
-            if (currentState.players.any { it.nickname.equals(rawName, ignoreCase = true) }) {
-                error("Nickname '$rawName' is already in use")
-            }
-
-            // Wenn wir hier ankommen, ist der Name gültig und einzigartig!
+            // Uniqueness is enforced atomically inside lobbyService.join under its
+            // lock, so two concurrent joins with the same name cannot both pass.
             val nickname = rawName
 
             // Spieler der Lobby hinzufügen
@@ -73,8 +68,12 @@ class LobbyController(
             messagingTemplate.convertAndSendToUser(playerId, "/queue/lobby", state.toUpdateMessage())
 
         }.onFailure { e ->
-            // Fehler (z.B. Name zu kurz oder vergeben) an den jeweiligen Spieler zurücksenden
-            messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
+            logger.warn("lobby.join failed for $playerId", e)
+            messagingTemplate.convertAndSendToUser(
+                playerId,
+                "/queue/errors",
+                mapOf("message" to (e.message ?: "Could not join lobby")),
+            )
         }
     }
 
@@ -101,7 +100,12 @@ class LobbyController(
             val gameState = gameService.startGame(lobbyState.players, gameConfig)
             messagingTemplate.convertAndSend("/topic/game", gameState)
         }.onFailure { e ->
-            messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
+            logger.warn("game.start failed for $playerId", e)
+            messagingTemplate.convertAndSendToUser(
+                playerId,
+                "/queue/errors",
+                mapOf("message" to (e.message ?: "Could not start game")),
+            )
         }
     }
 }

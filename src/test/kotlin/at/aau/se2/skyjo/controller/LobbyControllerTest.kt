@@ -87,14 +87,12 @@ class LobbyControllerTest {
 
         @Test
         fun `joinLobby sendet Fehler, wenn Nickname bereits existiert (Case Insensitive)`() {
-            val currentState = mockk<LobbyState>()
-            val existingPlayer = mockk<LobbyPlayer> {
-                every { nickname } returns "ExistingName"
-            }
-            every { currentState.players } returns listOf(existingPlayer)
-            every { lobbyService.getState() } returns currentState
+            // Uniqueness is now enforced atomically inside lobbyService.join
+            // (under its lock) instead of via a racy check-then-act in the controller.
+            every {
+                lobbyService.join(any(), "existingname")
+            } throws IllegalStateException("Nickname 'existingname' is already in use")
 
-            // Versuch mit gleichem Namen beizutreten (kleingeschrieben)
             controller.joinLobby(PlayerMessage("existingname"), headerAccessor)
 
             verify {
@@ -104,7 +102,6 @@ class LobbyControllerTest {
                     mapOf("message" to "Nickname 'existingname' is already in use")
                 )
             }
-            verify(exactly = 0) { lobbyService.join(any(), any()) }
         }
 
         @Test
