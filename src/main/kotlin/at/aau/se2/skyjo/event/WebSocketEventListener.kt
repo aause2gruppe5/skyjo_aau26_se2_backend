@@ -1,8 +1,10 @@
 package at.aau.se2.skyjo.event
 
-import at.aau.se2.skyjo.model.MessageType
-import at.aau.se2.skyjo.model.ServerMessage
-import at.aau.se2.skyjo.service.ConnectionService
+import at.aau.se2.skyjo.model.LobbyPlayerInfo
+import at.aau.se2.skyjo.model.LobbyUpdateMessage
+import at.aau.se2.skyjo.model.lobby.LobbyState
+import at.aau.se2.skyjo.service.GameService
+import at.aau.se2.skyjo.service.LobbyService
 import org.slf4j.LoggerFactory
 import org.springframework.context.event.EventListener
 import org.springframework.messaging.simp.SimpMessageSendingOperations
@@ -13,27 +15,35 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent
 @Component
 class WebSocketEventListener(
     private val messagingTemplate: SimpMessageSendingOperations,
-    private val connectionService: ConnectionService
+    private val lobbyService: LobbyService,
+    private val gameService: GameService?,
 ) {
 
     private val logger = LoggerFactory.getLogger(WebSocketEventListener::class.java)
 
     @EventListener
     fun handleWebSocketConnectListener(event: SessionConnectedEvent) {
-        val sessionId = event.message.headers["simpSessionId"]
-        logger.info("New WebSocket connection established: sessionId=$sessionId")
+        logger.info("New WebSocket connection: principal=${event.user?.name}")
     }
 
     @EventListener
     fun handleWebSocketDisconnectListener(event: SessionDisconnectEvent) {
-        val sessionId = event.sessionId
-        val playerName = connectionService.removeSession(sessionId)
-        if (playerName != null) {
-            logger.info("Player disconnected: $playerName (sessionId=$sessionId)")
-            messagingTemplate.convertAndSend(
-                "/topic/public",
-                ServerMessage(MessageType.PLAYER_LEFT, "$playerName has left.", playerName)
-            )
+        val playerId = event.user?.name ?: return
+        gameService?.markPlayerDisconnected(playerId)
+        val currentGameState = gameService?.getCurrentState()
+        if (currentGameState != null) {
+            messagingTemplate.convertAndSend("/topic/game", currentGameState)
+        }
+        if (lobbyService.isPlayerInLobby(playerId)) {
+            val updatedState = lobbyService.leave(playerId)
+            logger.info("Player disconnected and removed from lobby: $playerId")
+            messagingTemplate.convertAndSend("/topic/lobby", updatedState.toUpdateMessage())
         }
     }
 }
+
+private fun LobbyState.toUpdateMessage() = LobbyUpdateMessage(
+    players = players.map { LobbyPlayerInfo(nickname = it.nickname, isHost = it.isHost) },
+    status = status,
+    maxPlayers = maxPlayers,
+)

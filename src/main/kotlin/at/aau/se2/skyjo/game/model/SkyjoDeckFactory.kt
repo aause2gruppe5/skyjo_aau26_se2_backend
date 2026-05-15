@@ -22,7 +22,6 @@ object SkyjoDeckFactory {
                 SkyjoCard.NumberCard(id = index + 1, value = value)
             }
             .shuffled(random)
-
         return DrawPile(cards)
     }
 

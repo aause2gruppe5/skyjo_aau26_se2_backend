@@ -8,6 +8,7 @@ data class ServerMessage(
 
 enum class MessageType {
     PLAYER_JOINED,
+    PLAYER_REJOINED,
     PLAYER_LEFT,
     ERROR,
     INFO
