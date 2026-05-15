@@ -54,6 +54,7 @@ class SkyjoDeckFactoryTest {
 
         assertEquals(21, drawPile.cards.size)
         assertTrue(drawPile.cards.all { it.id in 151..171 })
+        assertTrue(drawPile.cards.all { it is SkyjoCard.ActionCard.Enlightenment })
     }
 
     @Test

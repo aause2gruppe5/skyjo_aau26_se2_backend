@@ -12,7 +12,6 @@ import at.aau.se2.skyjo.game.model.PlayerBoard
 import at.aau.se2.skyjo.game.model.PlayerState
 import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.SkyjoCard
-import at.aau.se2.skyjo.game.error.InvalidMoveException
 import at.aau.se2.skyjo.game.service.SkyjoEngine
 import at.aau.se2.skyjo.model.ActionCardResultType
 import at.aau.se2.skyjo.model.ActionType
@@ -299,25 +298,46 @@ class GameServiceTest {
     }
 
     @Test
-    fun `playActionCard rejects attempt to inspect another player's board`() {
-        setInternalGameState(service, gameStateWithActionCard(player1Id, playerBoardWithValues(emptyMap())))
+    fun `playActionCard Enlightenment can inspect another player's hidden row privately`() {
+        val targetRow = 0
+        val otherBoard = playerBoardWithValues(
+            mapOf(
+                BoardPosition(targetRow, 0) to 3,
+                BoardPosition(targetRow, 1) to 6,
+                BoardPosition(targetRow, 2) to 9,
+                BoardPosition(targetRow, 3) to 12,
+            ),
+            faceUp = false,
+        )
+        setInternalGameState(
+            service,
+            gameStateWithActionCard(
+                playerId = player1Id,
+                board = playerBoardWithValues(emptyMap()),
+                otherBoard = otherBoard,
+            ),
+        )
 
-        val ex = assertThrows<InvalidMoveException> {
-            service.playActionCard(
-                player1Id,
-                PlayActionCardCommand(
-                    actionCardIndex = 0,
-                    parameters = ActionCardParameters.BoardLineTarget(
-                        targetPlayerId = player2Id,
-                        targetType = BoardLineTargetType.ROW,
-                        lineIndex = 0,
-                    ),
+        val result = service.playActionCard(
+            player1Id,
+            PlayActionCardCommand(
+                actionCardIndex = 0,
+                parameters = ActionCardParameters.BoardLineTarget(
+                    targetPlayerId = player2Id,
+                    targetType = BoardLineTargetType.ROW,
+                    lineIndex = targetRow,
                 ),
-            )
-        }
+            ),
+        )
 
-        assertTrue(ex.message!!.contains("acting player's own board"))
-        assertTrue(getInternalGameState(service).players.first { it.id == player1Id }.actionCards.isNotEmpty())
+        val privateResult = result.privateActionCardResults[player1Id]!!
+        assertEquals(setOf(player1Id), result.privateActionCardResults.keys)
+        assertEquals(player2Id, privateResult.targetPlayerId)
+        assertEquals(listOf(3, 6, 9, 12), privateResult.inspectedValues)
+
+        val publicRow = result.gameUpdate.players.first { it.playerId == player2Id }.board[targetRow]
+        assertTrue(publicRow.all { it.faceUp == false })
+        assertTrue(publicRow.all { it.card == null })
     }
 
     @Test
@@ -417,7 +437,11 @@ private fun setInternalGameState(service: GameService, state: GameState) {
     totalScoresField.set(service, state.players.associate { it.id to 0 })
 }
 
-private fun gameStateWithActionCard(playerId: String, board: PlayerBoard): GameState {
+private fun gameStateWithActionCard(
+    playerId: String,
+    board: PlayerBoard,
+    otherBoard: PlayerBoard = playerBoardWithValues(emptyMap()),
+): GameState {
     val currentPlayer = PlayerState(
         id = playerId,
         board = board,
@@ -425,7 +449,7 @@ private fun gameStateWithActionCard(playerId: String, board: PlayerBoard): GameS
     )
     val otherPlayer = PlayerState(
         id = "player2",
-        board = playerBoardWithValues(emptyMap()),
+        board = otherBoard,
     )
     return GameState(
         players = listOf(currentPlayer, otherPlayer),

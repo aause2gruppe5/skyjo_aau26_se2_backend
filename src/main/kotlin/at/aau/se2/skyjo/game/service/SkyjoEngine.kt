@@ -361,7 +361,7 @@ class SkyjoEngine {
             val finalTurns = state.players.size - 1
             val nextPlayerIndex = nextPlayerIndex(state.currentPlayerIndex, state.players.size)
             if (finalTurns <= 0) {
-                return finishRound(state.copy(finisherPlayerId = currentPlayer.id, finalTurnsRemaining = 0))
+                return finishRoundAfterTurn(state.copy(finisherPlayerId = currentPlayer.id, finalTurnsRemaining = 0))
             }
 
             return state.copy(
@@ -375,7 +375,7 @@ class SkyjoEngine {
         if (state.finisherPlayerId != null) {
             val remainingFinalTurns = state.finalTurnsRemaining - 1
             if (remainingFinalTurns <= 0) {
-                return finishRound(state.copy(finalTurnsRemaining = 0))
+                return finishRoundAfterTurn(state.copy(finalTurnsRemaining = 0))
             }
 
             return state.copy(
@@ -389,6 +389,11 @@ class SkyjoEngine {
             currentPlayerIndex = nextPlayerIndex(state.currentPlayerIndex, state.players.size),
             phase = GamePhase.AWAITING_DRAW,
         )
+    }
+
+    private fun finishRoundAfterTurn(state: GameState): GameState {
+        val actionCardResult = state.actionCardResult
+        return finishRound(state).copy(actionCardResult = actionCardResult)
     }
 
     internal fun finishRound(state: GameState): GameState {

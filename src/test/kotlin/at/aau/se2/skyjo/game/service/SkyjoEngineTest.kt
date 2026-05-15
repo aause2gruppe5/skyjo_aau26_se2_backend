@@ -246,7 +246,7 @@ class SkyjoEngineTest {
         }
 
         @Test
-        fun playActionCardMovesCardFromPlayerToActionDiscardPile(){
+        fun playEnlightenmentMovesCardFromPlayerToActionDiscardPile(){
             val actionCard = actionCard(151)
             val player = mockPlayer("p1").copy(actionCards = listOf(actionCard))
             val state = mockGameState(
@@ -254,7 +254,17 @@ class SkyjoEngineTest {
                 players = listOf(player, mockPlayer("p2")),
             )
 
-            val result = engine.playActionCard(state, PlayActionCardCommand(actionCardIndex = 0))
+            val result = engine.playActionCard(
+                state,
+                PlayActionCardCommand(
+                    actionCardIndex = 0,
+                    parameters = ActionCardParameters.BoardLineTarget(
+                        targetPlayerId = "p1",
+                        targetType = BoardLineTargetType.ROW,
+                        lineIndex = 0,
+                    ),
+                ),
+            )
 
             assertThat(result.players[0].actionCards).isEmpty()
             assertThat(result.actionDiscardPile.topCard()).isEqualTo(actionCard)
@@ -311,7 +321,7 @@ class SkyjoEngineTest {
         }
 
         @Test
-        fun playEnlightenmentReturnsFullLineAndLeavesBoardUnchanged(){
+        fun playEnlightenmentReturnsOnlyFaceDownCardsAndLeavesBoardUnchanged(){
             val targetRow = 2
             val hiddenLeft = BoardPosition(targetRow, 0)
             val faceUpMiddle = BoardPosition(targetRow, 1)
@@ -347,8 +357,8 @@ class SkyjoEngineTest {
 
             val enlightenmentResult = result.actionCardResult as ActionCardResult.Enlightenment
             assertThat(enlightenmentResult.cards.map { it.position })
-                .containsExactly(hiddenLeft, faceUpMiddle, hiddenRight, faceUpRight)
-            assertThat(enlightenmentResult.cards.map { it.card?.scoreValue() }).containsExactly(3, 5, 7, 9)
+                .containsExactly(hiddenLeft, hiddenRight)
+            assertThat(enlightenmentResult.cards.map { it.card?.scoreValue() }).containsExactly(3, 7)
             assertThat(result.players[0].board).isEqualTo(originalBoard)
         }
 
@@ -393,6 +403,45 @@ class SkyjoEngineTest {
         }
 
         @Test
+        fun playEnlightenmentPreservesPrivateResultWhenFinalTurnFinishesRound(){
+            val actionCard = enlightenmentCard(151)
+            val player = mockPlayer(
+                "p1",
+                mockPlayerBoardWithExplicitValues(
+                    mapOf(
+                        BoardPosition(0, 0) to 1,
+                        BoardPosition(0, 1) to 2,
+                        BoardPosition(0, 2) to 3,
+                        BoardPosition(0, 3) to 4,
+                    ),
+                    faceUp = false,
+                ),
+            ).copy(actionCards = listOf(actionCard))
+            val state = mockGameState(
+                phase = GamePhase.FINAL_TURNS,
+                players = listOf(player, mockPlayer("p2")),
+                finisherPlayerId = "p2",
+                finalTurnsRemaining = 1,
+            )
+
+            val result = engine.playActionCard(
+                state,
+                PlayActionCardCommand(
+                    actionCardIndex = 0,
+                    parameters = ActionCardParameters.BoardLineTarget(
+                        targetPlayerId = "p1",
+                        targetType = BoardLineTargetType.ROW,
+                        lineIndex = 0,
+                    ),
+                ),
+            )
+
+            val enlightenmentResult = result.actionCardResult as ActionCardResult.Enlightenment
+            assertThat(result.phase).isEqualTo(GamePhase.ROUND_FINISHED)
+            assertThat(enlightenmentResult.cards.map { it.card?.scoreValue() }).containsExactly(1, 2, 3, 4)
+        }
+
+        @Test
         fun playEnlightenmentUsesZeroBasedLineIndex(){
             val actionCard = enlightenmentCard(151)
             val player = mockPlayer(
@@ -430,7 +479,7 @@ class SkyjoEngineTest {
         }
 
         @Test
-        fun playEnlightenmentRejectsTargetRowOnAnotherPlayerBoard(){
+        fun playEnlightenmentCanTargetRowOnAnotherPlayerBoard(){
             val targetRow = 0
             val actionCard = enlightenmentCard(151)
             val currentPlayer = mockPlayer("p1").copy(actionCards = listOf(actionCard))
@@ -449,55 +498,67 @@ class SkyjoEngineTest {
                 players = listOf(currentPlayer, otherPlayer),
             )
 
-            val exception = assertThrows<InvalidMoveException> {
-                engine.playActionCard(
-                    state,
-                    PlayActionCardCommand(
-                        actionCardIndex = 0,
-                        parameters = ActionCardParameters.BoardLineTarget(
-                            targetPlayerId = "p2",
-                            targetType = BoardLineTargetType.ROW,
-                            lineIndex = targetRow,
-                        ),
+            val result = engine.playActionCard(
+                state,
+                PlayActionCardCommand(
+                    actionCardIndex = 0,
+                    parameters = ActionCardParameters.BoardLineTarget(
+                        targetPlayerId = "p2",
+                        targetType = BoardLineTargetType.ROW,
+                        lineIndex = targetRow,
                     ),
-                )
-            }
+                ),
+            )
 
-            assertThat(exception).hasMessageContaining("acting player's own board")
-            assertThat(state.players[0].actionCards).containsExactly(actionCard)
-            assertThat(state.actionDiscardPile.cards).isEmpty()
-            assertThat(state.players[1].board).isEqualTo(otherPlayer.board)
+            val enlightenmentResult = result.actionCardResult as ActionCardResult.Enlightenment
+            assertThat(enlightenmentResult.actingPlayerId).isEqualTo("p1")
+            assertThat(enlightenmentResult.targetPlayerId).isEqualTo("p2")
+            assertThat(enlightenmentResult.cards.map { it.position }).containsExactlyElementsOf(BoardLayout.HORIZONTAL_LINES[targetRow])
+            assertThat(enlightenmentResult.cards.map { it.card?.scoreValue() }).containsExactly(10, 11, 0, 0)
+            assertThat(result.players[0].actionCards).isEmpty()
+            assertThat(result.actionDiscardPile.topCard()).isEqualTo(actionCard)
+            assertThat(result.players[1].board).isEqualTo(otherPlayer.board)
         }
 
         @Test
-        fun playEnlightenmentRejectsTargetColumnOnAnotherPlayerBoard(){
+        fun playEnlightenmentCanTargetColumnOnAnotherPlayerBoard(){
             val targetColumn = 1
             val actionCard = enlightenmentCard(151)
             val currentPlayer = mockPlayer("p1").copy(actionCards = listOf(actionCard))
-            val otherPlayer = mockPlayer("p2")
+            val otherPlayer = mockPlayer(
+                "p2",
+                mockPlayerBoardWithExplicitValues(
+                    mapOf(
+                        BoardPosition(0, targetColumn) to 3,
+                        BoardPosition(1, targetColumn) to 6,
+                        BoardPosition(2, targetColumn) to 9,
+                    ),
+                    faceUp = false,
+                ),
+            )
             val state = mockGameState(
                 phase = GamePhase.AWAITING_DRAW,
                 players = listOf(currentPlayer, otherPlayer),
             )
 
-            val exception = assertThrows<InvalidMoveException> {
-                engine.playActionCard(
-                    state,
-                    PlayActionCardCommand(
-                        actionCardIndex = 0,
-                        parameters = ActionCardParameters.BoardLineTarget(
-                            targetPlayerId = "p2",
-                            targetType = BoardLineTargetType.COLUMN,
-                            lineIndex = targetColumn,
-                        ),
+            val result = engine.playActionCard(
+                state,
+                PlayActionCardCommand(
+                    actionCardIndex = 0,
+                    parameters = ActionCardParameters.BoardLineTarget(
+                        targetPlayerId = "p2",
+                        targetType = BoardLineTargetType.COLUMN,
+                        lineIndex = targetColumn,
                     ),
-                )
-            }
+                ),
+            )
 
-            assertThat(exception).hasMessageContaining("acting player's own board")
-            assertThat(state.players[0].actionCards).containsExactly(actionCard)
-            assertThat(state.actionDiscardPile.cards).isEmpty()
-            assertThat(state.players[1].board).isEqualTo(otherPlayer.board)
+            val enlightenmentResult = result.actionCardResult as ActionCardResult.Enlightenment
+            assertThat(enlightenmentResult.actingPlayerId).isEqualTo("p1")
+            assertThat(enlightenmentResult.targetPlayerId).isEqualTo("p2")
+            assertThat(enlightenmentResult.cards.map { it.position }).containsExactlyElementsOf(BoardLayout.VERTICAL_LINES[targetColumn])
+            assertThat(enlightenmentResult.cards.map { it.card?.scoreValue() }).containsExactly(3, 6, 9)
+            assertThat(result.players[1].board).isEqualTo(otherPlayer.board)
         }
 
         @Test
@@ -553,7 +614,7 @@ class SkyjoEngineTest {
         }
 
         @Test
-        fun playEnlightenmentRejectsTargetThatIsNotActingPlayer(){
+        fun playEnlightenmentRejectsUnavailableTargetPlayer(){
             val actionCard = enlightenmentCard(151)
             val player = mockPlayer("p1").copy(actionCards = listOf(actionCard))
             val state = mockGameState(
@@ -575,7 +636,7 @@ class SkyjoEngineTest {
                 )
             }
 
-            assertThat(exception).hasMessageContaining("acting player's own board")
+            assertThat(exception).hasMessageContaining("target player missing is not available")
         }
 
         @Test
@@ -1309,7 +1370,7 @@ class SkyjoEngineTest {
     //Hilfsfunktionen (Mocking)
     private fun mockPosition(col: Int = 0, row: Int = 0) = BoardPosition(col, row)
     private fun mockCard(id: Int = 1, value: Int = 1) = SkyjoCard.NumberCard(id, value)
-    private fun actionCard(id: Int = 151) = SkyjoCard.ActionCard.Placeholder(id)
+    private fun actionCard(id: Int = 151) = SkyjoCard.ActionCard.Enlightenment(id)
     private fun enlightenmentCard(id: Int = 151) = SkyjoCard.ActionCard.Enlightenment(id)
     private fun mockPlayer(id: String = "p1", board: PlayerBoard = mockPlayerBoard()) = PlayerState(id, board)
     private fun mockPlayerBoard(defaultValue: Int = 0, faceUp: Boolean = false): PlayerBoard {

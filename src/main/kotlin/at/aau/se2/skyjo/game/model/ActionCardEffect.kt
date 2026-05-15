@@ -5,25 +5,19 @@ import at.aau.se2.skyjo.game.error.InvalidMoveException
 sealed interface ActionCardEffect {
     fun apply(state: GameState, parameters: ActionCardParameters): GameState
 
-    data object Placeholder : ActionCardEffect {
-        override fun apply(state: GameState, parameters: ActionCardParameters): GameState = state
-    }
-
     data object Enlightenment : ActionCardEffect {
         override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
             val target = parameters as? ActionCardParameters.BoardLineTarget
                 ?: throw InvalidMoveException("enlightenment requires a board row or column target")
             val actingPlayerId = state.currentPlayerId
                 ?: throw InvalidMoveException("current player is not available")
-            if (target.targetPlayerId != actingPlayerId) {
-                throw InvalidMoveException("enlightenment can only inspect the acting player's own board")
-            }
-            val targetPlayer = state.currentPlayer()
+            val targetPlayer = state.players.firstOrNull { it.id == target.targetPlayerId }
+                ?: throw InvalidMoveException("target player ${target.targetPlayerId} is not available")
             val targetPositions = target.positions()
-            val viewedCards = targetPositions.map { position ->
+            val viewedCards = targetPositions.mapNotNull { position ->
                 when (val slot = targetPlayer.board.slotAt(position)) {
-                    is BoardSlot.Cleared -> ViewedCard(position, null)
-                    is BoardSlot.Occupied -> ViewedCard(position, slot.card)
+                    is BoardSlot.Cleared -> null
+                    is BoardSlot.Occupied -> if (slot.faceUp) null else ViewedCard(position, slot.card)
                 }
             }
 
@@ -42,7 +36,6 @@ sealed interface ActionCardEffect {
 
 fun SkyjoCard.ActionCard.toEffect(): ActionCardEffect =
     when (this) {
-        is SkyjoCard.ActionCard.Placeholder -> ActionCardEffect.Placeholder
         is SkyjoCard.ActionCard.Enlightenment -> ActionCardEffect.Enlightenment
     }
 

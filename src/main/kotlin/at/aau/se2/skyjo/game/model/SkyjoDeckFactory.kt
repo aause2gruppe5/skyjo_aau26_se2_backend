@@ -28,7 +28,7 @@ object SkyjoDeckFactory {
         val random = seed?.let { Random(it + 1L) } ?: Random.Default
         val numberCardCount = cardDistribution.size
         val actionCards = List(ACTION_CARD_COUNT) { index ->
-            SkyjoCard.ActionCard.Placeholder(id = numberCardCount + index + 1)
+            SkyjoCard.ActionCard.Enlightenment(id = numberCardCount + index + 1)
         }.shuffled(random)
         return ActionDrawPile(actionCards)
     }

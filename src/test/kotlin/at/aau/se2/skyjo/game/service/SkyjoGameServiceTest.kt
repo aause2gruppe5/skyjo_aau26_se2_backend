@@ -250,5 +250,5 @@ class SkyjoGameServiceTest {
         verify(exactly = 1) { engine.playActionCard(stateBeforePlay, command) }
     }
 
-    private fun actionCard(id: Int) = SkyjoCard.ActionCard.Placeholder(id)
+    private fun actionCard(id: Int) = SkyjoCard.ActionCard.Enlightenment(id)
 }

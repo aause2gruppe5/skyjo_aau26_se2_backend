@@ -12,8 +12,8 @@ class SkyjoCardTest {
     }
 
     @Test
-    fun actionCardScoreValueIsZero(){
-        val card = SkyjoCard.ActionCard.Placeholder(id = 2)
+    fun actionCardScoreValueUsesActionCardScore(){
+        val card = SkyjoCard.ActionCard.Enlightenment(id = 2)
 
         assertEquals(ACTION_CARD_SCORE, card.scoreValue())
     }
@@ -23,13 +23,6 @@ class SkyjoCardTest {
         val card = SkyjoCard.NumberCard(id = 1, value = 12)
 
         assertEquals("12", card.displayLabel())
-    }
-
-    @Test
-    fun actionCardDisplayLabelIsAction(){
-        val card = SkyjoCard.ActionCard.Placeholder(id = 2)
-
-        assertEquals("Action", card.displayLabel())
     }
 
     @Test

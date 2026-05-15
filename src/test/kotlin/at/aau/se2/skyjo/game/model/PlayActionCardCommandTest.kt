@@ -14,7 +14,7 @@ class PlayActionCardCommandTest {
             {
               "actionCardIndex": 0,
               "parameters": {
-                "targetPlayerId": "p1",
+                "targetPlayerId": "player-id",
                 "targetType": "ROW",
                 "lineIndex": 0
               }
@@ -25,7 +25,7 @@ class PlayActionCardCommandTest {
         val parameters = command.parameters as ActionCardParameters.BoardLineTarget
 
         assertEquals(0, command.actionCardIndex)
-        assertEquals("p1", parameters.targetPlayerId)
+        assertEquals("player-id", parameters.targetPlayerId)
         assertEquals(BoardLineTargetType.ROW, parameters.targetType)
         assertEquals(0, parameters.lineIndex)
     }
