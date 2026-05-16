@@ -12,7 +12,8 @@ import org.springframework.messaging.simp.SimpMessageSendingOperations
 import java.security.Principal
 import at.aau.se2.skyjo.service.*
 import at.aau.se2.skyjo.model.*
-import  at.aau.se2.skyjo.model.lobby.*
+import at.aau.se2.skyjo.model.lobby.*
+import at.aau.se2.skyjo.persistence.GameRepository
 
 @ExtendWith(MockKExtension::class)
 class LobbyControllerTest {
@@ -123,6 +124,37 @@ class LobbyControllerTest {
                     mapOf("message" to errorMessage)
                 )
             }
+        }
+
+        @Test
+        fun `joinLobby rejoin sends game state to player when state is available`() {
+            val mockRepository = mockk<GameRepository>(relaxed = true)
+            val controllerWithRepo = LobbyController(lobbyService, gameService, messagingTemplate, mockRepository)
+
+            every { mockRepository.getPlayerGame("Alice") } returns "game-123"
+            every { gameService.getActiveGameId() } returns "game-123"
+            every { gameService.addSessionAlias(playerId, "Alice") } returns true
+            val gameUpdateMessage = mockk<GameUpdateMessage>()
+            every { gameService.getCurrentState() } returns gameUpdateMessage
+
+            controllerWithRepo.joinLobby(PlayerMessage("Alice"), headerAccessor)
+
+            verify { messagingTemplate.convertAndSendToUser(playerId, "/queue/gamestate", gameUpdateMessage) }
+        }
+
+        @Test
+        fun `joinLobby rejoin skips game state message when getCurrentState returns null`() {
+            val mockRepository = mockk<GameRepository>(relaxed = true)
+            val controllerWithRepo = LobbyController(lobbyService, gameService, messagingTemplate, mockRepository)
+
+            every { mockRepository.getPlayerGame("Alice") } returns "game-123"
+            every { gameService.getActiveGameId() } returns "game-123"
+            every { gameService.addSessionAlias(playerId, "Alice") } returns true
+            every { gameService.getCurrentState() } returns null
+
+            controllerWithRepo.joinLobby(PlayerMessage("Alice"), headerAccessor)
+
+            verify(exactly = 0) { messagingTemplate.convertAndSendToUser(playerId, "/queue/gamestate", any()) }
         }
 
         @Test

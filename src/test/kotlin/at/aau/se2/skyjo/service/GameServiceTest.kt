@@ -281,6 +281,51 @@ class GameServiceTest {
 
         assertNotNull(service.getCurrentState())
     }
+
+    // ── markPlayerDisconnected ────────────────────────────────────────────
+
+    @Test
+    fun `markPlayerDisconnected with unknown session id does not add to disconnected list`() {
+        service.startGame(players)
+
+        service.markPlayerDisconnected("unknown-session")
+
+        val state = service.getCurrentState()!!
+        assertTrue(state.disconnectedPlayers.isEmpty())
+    }
+
+    @Test
+    fun `markPlayerDisconnected with known session id adds nickname to disconnected list`() {
+        service.startGame(players)
+
+        service.markPlayerDisconnected(player1Id)
+
+        val state = service.getCurrentState()!!
+        assertTrue(state.disconnectedPlayers.contains("Alice"))
+    }
+
+    // ── addSessionAlias ───────────────────────────────────────────────────
+
+    @Test
+    fun `addSessionAlias returns false when nickname not found in active game`() {
+        service.startGame(players)
+
+        val result = service.addSessionAlias("new-session", "NonExistent")
+
+        assertFalse(result)
+    }
+
+    @Test
+    fun `addSessionAlias returns true and removes nickname from disconnected list`() {
+        service.startGame(players)
+        service.markPlayerDisconnected(player1Id)
+        assertTrue(service.getCurrentState()!!.disconnectedPlayers.contains("Alice"))
+
+        val result = service.addSessionAlias("new-session-id", "Alice")
+
+        assertTrue(result)
+        assertFalse(service.getCurrentState()!!.disconnectedPlayers.contains("Alice"))
+    }
 }
 
 // Helpers to access internal state for test setup
