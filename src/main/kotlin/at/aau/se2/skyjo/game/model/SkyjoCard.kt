@@ -14,6 +14,10 @@ sealed interface SkyjoCard {
         data class Placeholder(
             override val id: Int,
         ) : ActionCard
+
+        data class Defense(
+            override val id: Int,
+        ) : ActionCard
     }
 }
 
@@ -29,5 +33,6 @@ fun SkyjoCard.ActionCard.scoreValue(): Int = ACTION_CARD_SCORE
 fun SkyjoCard.displayLabel(): String =
     when (this) {
         is SkyjoCard.NumberCard -> value.toString()
+        is SkyjoCard.ActionCard.Defense -> "Defense"
         is SkyjoCard.ActionCard.Placeholder -> "Action"
     }

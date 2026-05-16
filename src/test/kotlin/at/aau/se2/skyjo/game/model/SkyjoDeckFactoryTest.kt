@@ -32,6 +32,13 @@ class SkyjoDeckFactoryTest {
     }
 
     @Test
+    fun actionDrawPileContainsThreeDefenseCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(3, drawPile.cards.count { it is SkyjoCard.ActionCard.Defense })
+    }
+
+    @Test
     fun cardsHaveUniqueId(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
         val actionDrawPile = SkyjoDeckFactory.createShuffledActionDrawPile()

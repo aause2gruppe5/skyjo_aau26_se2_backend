@@ -6,9 +6,12 @@ import at.aau.se2.skyjo.game.model.BoardSlot
 import at.aau.se2.skyjo.game.model.DrawSource
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.SkyjoCard
 import at.aau.se2.skyjo.game.model.scoreValue
 import at.aau.se2.skyjo.game.service.SkyjoEngine
+import at.aau.se2.skyjo.model.ActionCardDto
+import at.aau.se2.skyjo.model.ActionCardKind
 import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.BoardSlotDto
 import at.aau.se2.skyjo.model.CardDto
@@ -98,6 +101,10 @@ class GameService(
                     DrawSource.ACTION_DECK -> engine.drawActionCardFromDeck(state)
                 }
             }
+            ActionType.DRAW_VISIBLE_ACTION_CARD -> {
+                val index = action.actionCardIndex ?: error("actionCardIndex required for DRAW_VISIBLE_ACTION_CARD action")
+                engine.drawVisibleActionCard(state, index)
+            }
             ActionType.REPLACE -> {
                 val row = action.row ?: error("row required for REPLACE action")
                 val col = action.col ?: error("col required for REPLACE action")
@@ -107,6 +114,14 @@ class GameService(
                 val row = action.row ?: error("row required for DISCARD_AND_REVEAL action")
                 val col = action.col ?: error("col required for DISCARD_AND_REVEAL action")
                 engine.discardDrawnCardAndReveal(state, BoardPosition(row, col))
+            }
+            ActionType.PLAY_ACTION_CARD -> {
+                val index = action.actionCardIndex ?: error("actionCardIndex required for PLAY_ACTION_CARD action")
+                engine.playActionCard(state, PlayActionCardCommand(actionCardIndex = index))
+            }
+            ActionType.DISCARD_ACTION_CARD -> {
+                val index = action.actionCardIndex ?: error("actionCardIndex required for DISCARD_ACTION_CARD action")
+                engine.discardActionCard(state, index)
             }
         }
 
@@ -165,6 +180,7 @@ class GameService(
                 playerId = playerState.id,
                 nickname = playerInfo[playerState.id] ?: playerState.id,
                 board = rows,
+                actionCards = playerState.actionCards.map(::toActionCardDto),
             )
         }
 
@@ -182,6 +198,8 @@ class GameService(
             players = players,
             discardTopCard = if (state.discardPile.size > 0) toCardDto(state.discardPile.topCard()) else null,
             drawnCard = state.drawnCard?.let { toCardDto(it) },
+            visibleActionCards = state.visibleActionCards.map(::toActionCardDto),
+            actionDrawPileCount = state.actionDrawPile.size,
             roundResult = state.roundResult,
             roundNumber = roundNumber,
             totalScores = scores,
@@ -196,4 +214,13 @@ class GameService(
             is SkyjoCard.NumberCard -> CardDto(id = card.id, value = card.value, type = CardType.NUMBER)
             is SkyjoCard.ActionCard -> CardDto(id = card.id, value = card.scoreValue(), type = CardType.ACTION)
         }
+
+    private fun toActionCardDto(card: SkyjoCard.ActionCard): ActionCardDto =
+        ActionCardDto(
+            id = card.id,
+            kind = when (card) {
+                is SkyjoCard.ActionCard.Placeholder -> ActionCardKind.PLACEHOLDER
+                is SkyjoCard.ActionCard.Defense -> ActionCardKind.DEFENSE
+            },
+        )
 }

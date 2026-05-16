@@ -241,40 +241,6 @@ class SkyjoEngine {
         )
     }
 
-    private fun playOrDiscardActionCard(
-        state: GameState,
-        actionCardIndex: Int,
-        applyEffect: Boolean,
-        parameters: ActionCardParameters = ActionCardParameters.None,
-    ): GameState {
-        val playableState = requireReadyForTurnAction(state, "play or discard an action card")
-        val currentPlayer = playableState.currentPlayer()
-        if (actionCardIndex !in currentPlayer.actionCards.indices) {
-            throw InvalidMoveException("action card index $actionCardIndex is not available")
-        }
-
-        val actionCard = currentPlayer.actionCards[actionCardIndex]
-        val remainingActionCards = currentPlayer.actionCards.filterIndexed { index, _ -> index != actionCardIndex }
-        val updatedPlayers = playableState.players.updated(
-            playableState.currentPlayerIndex,
-            currentPlayer.copy(actionCards = remainingActionCards),
-        )
-
-        val stateAfterDiscard = playableState.copy(
-            players = updatedPlayers,
-            actionDiscardPile = playableState.actionDiscardPile.add(actionCard),
-            drawnCard = null,
-            drawSource = null,
-        )
-        val stateAfterAction = if (applyEffect) {
-            actionCard.toEffect().apply(stateAfterDiscard, parameters)
-        } else {
-            stateAfterDiscard
-        }
-
-        return advanceAfterTurn(stateAfterAction)
-    }
-
     private fun validateSetup(
         playerIds: List<String>,
         initialReveals: Map<String, Set<BoardPosition>>,
@@ -346,6 +312,44 @@ class SkyjoEngine {
         )
     }
 
+    private fun playOrDiscardActionCard(
+        state: GameState,
+        actionCardIndex: Int,
+        applyEffect: Boolean,
+        parameters: ActionCardParameters = ActionCardParameters.None,
+    ): GameState {
+        val playableState = requireReadyForTurnAction(state, "play or discard an action card")
+        if (playableState.phase == GamePhase.FINAL_TURNS) {
+            throw InvalidMoveException("action cards cannot be played or discarded during final turns")
+        }
+
+        val currentPlayer = playableState.currentPlayer()
+        if (actionCardIndex !in currentPlayer.actionCards.indices) {
+            throw InvalidMoveException("action card index $actionCardIndex is not available")
+        }
+
+        val actionCard = currentPlayer.actionCards[actionCardIndex]
+        val remainingActionCards = currentPlayer.actionCards.filterIndexed { index, _ -> index != actionCardIndex }
+        val updatedPlayers = playableState.players.updated(
+            playableState.currentPlayerIndex,
+            currentPlayer.copy(actionCards = remainingActionCards),
+        )
+
+        val stateAfterDiscard = playableState.copy(
+            players = updatedPlayers,
+            actionDiscardPile = playableState.actionDiscardPile.add(actionCard),
+            drawnCard = null,
+            drawSource = null,
+        )
+        val stateAfterAction = if (applyEffect) {
+            actionCard.toEffect().apply(stateAfterDiscard, parameters)
+        } else {
+            stateAfterDiscard
+        }
+
+        return advanceAfterTurn(stateAfterAction)
+    }
+
     private fun advanceAfterTurn(state: GameState): GameState {
         val currentPlayer = state.currentPlayer()
         val finisherTriggered = !currentPlayer.board.hasHiddenCards()
@@ -362,6 +366,13 @@ class SkyjoEngine {
                 phase = GamePhase.FINAL_TURNS,
                 finisherPlayerId = currentPlayer.id,
                 finalTurnsRemaining = finalTurns,
+            )
+        }
+
+        if (state.pendingExtraTurns > 0) {
+            return state.copy(
+                phase = if (state.finisherPlayerId == null) GamePhase.AWAITING_DRAW else GamePhase.FINAL_TURNS,
+                pendingExtraTurns = state.pendingExtraTurns - 1,
             )
         }
 
