@@ -12,6 +12,7 @@ data class PlayActionCardCommand(
 @JsonSubTypes(
     JsonSubTypes.Type(ActionCardParameters.None::class),
     JsonSubTypes.Type(ActionCardParameters.BoardLineTarget::class),
+    JsonSubTypes.Type(ActionCardParameters.PlayerSwap::class),
 )
 sealed interface ActionCardParameters {
     data object None : ActionCardParameters
@@ -20,6 +21,13 @@ sealed interface ActionCardParameters {
         val targetPlayerId: String,
         val targetType: BoardLineTargetType,
         val lineIndex: Int,
+    ) : ActionCardParameters
+
+    data class PlayerSwap(
+        val player1Id: String,
+        val player1Position: BoardPosition,
+        val player2Id: String,
+        val player2Position: BoardPosition,
     ) : ActionCardParameters
 }
 

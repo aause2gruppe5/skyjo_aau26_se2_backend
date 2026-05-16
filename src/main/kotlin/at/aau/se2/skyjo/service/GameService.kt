@@ -1,5 +1,6 @@
 package at.aau.se2.skyjo.service
 
+import at.aau.se2.skyjo.game.model.ActionCardParameters
 import at.aau.se2.skyjo.game.model.BoardLayout
 import at.aau.se2.skyjo.game.model.BoardPosition
 import at.aau.se2.skyjo.game.model.BoardSlot
@@ -124,7 +125,23 @@ class GameService(
             }
             ActionType.PLAY_ACTION_CARD -> {
                 val index = action.actionCardIndex ?: error("actionCardIndex required for PLAY_ACTION_CARD action")
-                engine.playActionCard(state, PlayActionCardCommand(actionCardIndex = index))
+                val actionCard = state.currentPlayer().actionCards.getOrNull(index)
+                    ?: error("action card index $index is not available")
+                val parameters = when (actionCard) {
+                    is SkyjoCard.ActionCard.PlayerSwapCard -> action.toPlayerSwapParameters()
+                    is SkyjoCard.ActionCard.Defense,
+                    is SkyjoCard.ActionCard.Placeholder -> ActionCardParameters.None
+                    is SkyjoCard.ActionCard.Enlightenment ->
+                        error("enlightenment requires private PLAY_ACTION_CARD command parameters")
+                }
+
+                engine.playActionCard(
+                    state,
+                    PlayActionCardCommand(
+                        actionCardIndex = index,
+                        parameters = parameters,
+                    ),
+                )
             }
             ActionType.DISCARD_ACTION_CARD -> {
                 val index = action.actionCardIndex ?: error("actionCardIndex required for DISCARD_ACTION_CARD action")
@@ -258,6 +275,7 @@ class GameService(
                 is SkyjoCard.ActionCard.Enlightenment -> ActionCardKind.ENLIGHTENMENT
                 is SkyjoCard.ActionCard.Placeholder -> ActionCardKind.PLACEHOLDER
                 is SkyjoCard.ActionCard.Defense -> ActionCardKind.DEFENSE
+                is SkyjoCard.ActionCard.PlayerSwapCard -> ActionCardKind.PLAYER_SWAP
             },
             label = card.displayLabel(),
             value = card.scoreValue(),
@@ -285,4 +303,20 @@ class GameService(
                 )
             }
         }
+
+    private fun GameActionMessage.toPlayerSwapParameters(): ActionCardParameters.PlayerSwap {
+        val p1Id = targetPlayer1Id ?: error("targetPlayer1Id required for PLAY_ACTION_CARD")
+        val p1Row = targetPlayer1Row ?: error("targetPlayer1Row required for PLAY_ACTION_CARD")
+        val p1Col = targetPlayer1Col ?: error("targetPlayer1Col required for PLAY_ACTION_CARD")
+        val p2Id = targetPlayer2Id ?: error("targetPlayer2Id required for PLAY_ACTION_CARD")
+        val p2Row = targetPlayer2Row ?: error("targetPlayer2Row required for PLAY_ACTION_CARD")
+        val p2Col = targetPlayer2Col ?: error("targetPlayer2Col required for PLAY_ACTION_CARD")
+
+        return ActionCardParameters.PlayerSwap(
+            player1Id = p1Id,
+            player1Position = BoardPosition(p1Row, p1Col),
+            player2Id = p2Id,
+            player2Position = BoardPosition(p2Row, p2Col),
+        )
+    }
 }
