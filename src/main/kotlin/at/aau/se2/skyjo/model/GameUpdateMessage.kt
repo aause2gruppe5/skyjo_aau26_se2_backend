@@ -47,7 +47,7 @@ data class ActionCardDto(
     val kind: ActionCardKind,
 )
 
-enum class ActionCardKind { PLACEHOLDER, DEFENSE }
+enum class ActionCardKind { PLACEHOLDER, DEFENSE, PLAYER_SWAP }
 
 data class PlayerScoreDto(
     val playerId: String,

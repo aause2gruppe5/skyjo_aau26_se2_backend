@@ -18,6 +18,10 @@ sealed interface SkyjoCard {
         data class Defense(
             override val id: Int,
         ) : ActionCard
+
+        data class PlayerSwapCard(
+            override val id: Int,
+        ) : ActionCard
     }
 }
 
@@ -35,4 +39,5 @@ fun SkyjoCard.displayLabel(): String =
         is SkyjoCard.NumberCard -> value.toString()
         is SkyjoCard.ActionCard.Defense -> "Defense"
         is SkyjoCard.ActionCard.Placeholder -> "Action"
+        is SkyjoCard.ActionCard.PlayerSwapCard -> "Swap"
     }

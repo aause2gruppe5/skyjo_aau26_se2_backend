@@ -7,4 +7,11 @@ data class PlayActionCardCommand(
 
 sealed interface ActionCardParameters {
     data object None : ActionCardParameters
+
+    data class PlayerSwap(
+        val player1Id: String,
+        val player1Position: BoardPosition,
+        val player2Id: String,
+        val player2Position: BoardPosition,
+    ) : ActionCardParameters
 }
