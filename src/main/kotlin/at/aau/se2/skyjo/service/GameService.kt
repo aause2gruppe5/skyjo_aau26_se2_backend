@@ -221,6 +221,7 @@ class GameService(
             kind = when (card) {
                 is SkyjoCard.ActionCard.Placeholder -> ActionCardKind.PLACEHOLDER
                 is SkyjoCard.ActionCard.Defense -> ActionCardKind.DEFENSE
+                is SkyjoCard.ActionCard.SwapOwnCards -> ActionCardKind.SWAP_OWN_CARDS
             },
         )
 }
