@@ -18,7 +18,6 @@ class GameController(
 
     private val logger = LoggerFactory.getLogger(GameController::class.java)
 
-    // TODO: full action processing (draw, replace, discard+reveal) is a placeholder
     @MessageMapping("/game.action")
     fun gameAction(
         @Payload action: GameActionMessage,

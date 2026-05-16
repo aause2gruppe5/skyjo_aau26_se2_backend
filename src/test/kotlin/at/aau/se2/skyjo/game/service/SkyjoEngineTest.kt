@@ -247,7 +247,7 @@ class SkyjoEngineTest {
 
         @Test
         fun playEnlightenmentMovesCardFromPlayerToActionDiscardPile(){
-            val actionCard = actionCard(151)
+            val actionCard = enlightenmentCard(151)
             val player = mockPlayer("p1").copy(actionCards = listOf(actionCard))
             val state = mockGameState(
                 phase = GamePhase.AWAITING_DRAW,
@@ -403,42 +403,58 @@ class SkyjoEngineTest {
         }
 
         @Test
-        fun playEnlightenmentPreservesPrivateResultWhenFinalTurnFinishesRound(){
-            val actionCard = enlightenmentCard(151)
-            val player = mockPlayer(
-                "p1",
-                mockPlayerBoardWithExplicitValues(
-                    mapOf(
-                        BoardPosition(0, 0) to 1,
-                        BoardPosition(0, 1) to 2,
-                        BoardPosition(0, 2) to 3,
-                        BoardPosition(0, 3) to 4,
-                    ),
-                    faceUp = false,
-                ),
-            ).copy(actionCards = listOf(actionCard))
+        fun playDefenseCardGrantsImmediateExtraTurn(){
+            val defenseCard = defenseCard(151)
+            val player = mockPlayer("p1").copy(actionCards = listOf(defenseCard))
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                players = listOf(player, mockPlayer("p2")),
+                currentPlayerIndex = 0,
+            )
+
+            val result = engine.playActionCard(state, PlayActionCardCommand(actionCardIndex = 0))
+
+            assertThat(result.players[0].actionCards).isEmpty()
+            assertThat(result.actionDiscardPile.topCard()).isEqualTo(defenseCard)
+            assertThat(result.currentPlayerIndex).isEqualTo(0)
+            assertThat(result.phase).isEqualTo(GamePhase.AWAITING_DRAW)
+            assertThat(result.pendingExtraTurns).isEqualTo(0)
+        }
+
+        @Test
+        fun playActionCardRejectsFinalTurns(){
+            val player = mockPlayer("p1").copy(actionCards = listOf(defenseCard(151)))
             val state = mockGameState(
                 phase = GamePhase.FINAL_TURNS,
                 players = listOf(player, mockPlayer("p2")),
+                currentPlayerIndex = 0,
                 finisherPlayerId = "p2",
                 finalTurnsRemaining = 1,
             )
 
-            val result = engine.playActionCard(
-                state,
-                PlayActionCardCommand(
-                    actionCardIndex = 0,
-                    parameters = ActionCardParameters.BoardLineTarget(
-                        targetPlayerId = "p1",
-                        targetType = BoardLineTargetType.ROW,
-                        lineIndex = 0,
-                    ),
-                ),
+            val exception = assertThrows<InvalidMoveException> {
+                engine.playActionCard(state, PlayActionCardCommand(actionCardIndex = 0))
+            }
+
+            assertThat(exception).hasMessageContaining("action cards cannot be played or discarded during final turns")
+        }
+
+        @Test
+        fun discardActionCardRejectsFinalTurns(){
+            val player = mockPlayer("p1").copy(actionCards = listOf(actionCard(151)))
+            val state = mockGameState(
+                phase = GamePhase.FINAL_TURNS,
+                players = listOf(player, mockPlayer("p2")),
+                currentPlayerIndex = 0,
+                finisherPlayerId = "p2",
+                finalTurnsRemaining = 1,
             )
 
-            val enlightenmentResult = result.actionCardResult as ActionCardResult.Enlightenment
-            assertThat(result.phase).isEqualTo(GamePhase.ROUND_FINISHED)
-            assertThat(enlightenmentResult.cards.map { it.card?.scoreValue() }).containsExactly(1, 2, 3, 4)
+            val exception = assertThrows<InvalidMoveException> {
+                engine.discardActionCard(state, 0)
+            }
+
+            assertThat(exception).hasMessageContaining("action cards cannot be played or discarded during final turns")
         }
 
         @Test
@@ -1370,8 +1386,9 @@ class SkyjoEngineTest {
     //Hilfsfunktionen (Mocking)
     private fun mockPosition(col: Int = 0, row: Int = 0) = BoardPosition(col, row)
     private fun mockCard(id: Int = 1, value: Int = 1) = SkyjoCard.NumberCard(id, value)
-    private fun actionCard(id: Int = 151) = SkyjoCard.ActionCard.Enlightenment(id)
+    private fun actionCard(id: Int = 151) = SkyjoCard.ActionCard.Placeholder(id)
     private fun enlightenmentCard(id: Int = 151) = SkyjoCard.ActionCard.Enlightenment(id)
+    private fun defenseCard(id: Int = 151) = SkyjoCard.ActionCard.Defense(id)
     private fun mockPlayer(id: String = "p1", board: PlayerBoard = mockPlayerBoard()) = PlayerState(id, board)
     private fun mockPlayerBoard(defaultValue: Int = 0, faceUp: Boolean = false): PlayerBoard {
         val slots = BoardLayout.POSITIONS.associateWith{pos ->

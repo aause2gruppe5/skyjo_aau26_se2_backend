@@ -12,8 +12,8 @@ import at.aau.se2.skyjo.game.model.PlayerBoard
 import at.aau.se2.skyjo.game.model.PlayerState
 import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.SkyjoCard
-import at.aau.se2.skyjo.model.ActionCardKind
 import at.aau.se2.skyjo.game.service.SkyjoEngine
+import at.aau.se2.skyjo.model.ActionCardKind
 import at.aau.se2.skyjo.model.ActionCardResultType
 import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.GameActionMessage
@@ -98,13 +98,17 @@ class GameServiceTest {
     }
 
     @Test
-    fun `startGame exposes visible action cards and empty player hands`() {
+    fun `startGame exposes visible action cards and action draw pile count`() {
         val result = service.startGame(players)
 
         assertEquals(4, result.visibleActionCards.size)
         assertEquals(16, result.actionDrawPileCount)
         assertTrue(result.visibleActionCards.all { it.value == 10 })
-        assertTrue(result.visibleActionCards.all { it.kind in setOf(ActionCardKind.ENLIGHTENMENT, ActionCardKind.PLACEHOLDER) })
+        assertTrue(
+            result.visibleActionCards.all {
+                it.kind in setOf(ActionCardKind.ENLIGHTENMENT, ActionCardKind.DEFENSE, ActionCardKind.PLACEHOLDER)
+            },
+        )
         assertTrue(result.players.all { it.actionCards.isEmpty() })
     }
 
@@ -163,6 +167,17 @@ class GameServiceTest {
             service.processAction(currentPlayerId, GameActionMessage(ActionType.DISCARD_AND_REVEAL))
         }
         assertTrue(ex.message!!.contains("row required"))
+    }
+
+    @Test
+    fun `processAction DRAW_VISIBLE_ACTION_CARD throws when index is missing`() {
+        service.startGame(players)
+        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
+
+        val ex = assertThrows<IllegalStateException> {
+            service.processAction(currentPlayerId, GameActionMessage(ActionType.DRAW_VISIBLE_ACTION_CARD))
+        }
+        assertTrue(ex.message!!.contains("actionCardIndex required"))
     }
 
     // ── processAction – normal flow ───────────────────────────────────────
@@ -260,6 +275,88 @@ class GameServiceTest {
         // After replace the card is face-up, so the value should be visible
         assertNotNull(replacedSlot.card)
         assertTrue(replacedSlot.faceUp == true)
+    }
+
+    @Test
+    fun `processAction DRAW_VISIBLE_ACTION_CARD adds selected card to player hand`() {
+        service.startGame(players)
+        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
+        val visibleCardId = service.getCurrentState()!!.visibleActionCards.first().id
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.DRAW_VISIBLE_ACTION_CARD, actionCardIndex = 0),
+        )
+
+        val player = result.players.first { it.playerId == currentPlayerId }
+        assertEquals(listOf(visibleCardId), player.actionCards.map { it.id })
+        assertEquals(4, result.visibleActionCards.size)
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD consumes defense card and keeps the turn`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.Defense(id = 999)))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.PLAY_ACTION_CARD, actionCardIndex = 0),
+        )
+
+        val player = result.players.first { it.playerId == currentPlayerId }
+        assertTrue(player.actionCards.isEmpty())
+        assertEquals(currentPlayerId, result.currentPlayerId)
+    }
+
+    @Test
+    fun `processAction DISCARD_ACTION_CARD removes card from player hand`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.Placeholder(id = 1000)))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.DISCARD_ACTION_CARD, actionCardIndex = 0),
+        )
+
+        val player = result.players.first { it.playerId == currentPlayerId }
+        assertTrue(player.actionCards.isEmpty())
+    }
+
+    @Test
+    fun `game updates expose action card kinds`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.Defense(id = 999)))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val update = service.getCurrentState()!!
+        val currentPlayer = update.players.first { it.playerId == state.currentPlayerId }
+
+        assertEquals(ActionCardKind.DEFENSE, currentPlayer.actionCards.single().kind)
     }
 
     // ── round transitions ─────────────────────────────────────────────────

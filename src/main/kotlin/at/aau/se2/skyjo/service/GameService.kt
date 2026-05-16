@@ -6,17 +6,17 @@ import at.aau.se2.skyjo.game.model.BoardSlot
 import at.aau.se2.skyjo.game.model.DrawSource
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
+import at.aau.se2.skyjo.game.model.ActionCardResult
 import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.SkyjoCard
-import at.aau.se2.skyjo.game.model.ActionCardResult
 import at.aau.se2.skyjo.game.model.displayLabel
 import at.aau.se2.skyjo.game.model.scoreValue
+import at.aau.se2.skyjo.game.service.SkyjoEngine
 import at.aau.se2.skyjo.model.ActionCardDto
 import at.aau.se2.skyjo.model.ActionCardKind
-import at.aau.se2.skyjo.game.service.SkyjoEngine
-import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.ActionCardResultMessage
 import at.aau.se2.skyjo.model.ActionCardResultType
+import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.BoardSlotDto
 import at.aau.se2.skyjo.model.CardDto
 import at.aau.se2.skyjo.model.CardType
@@ -121,6 +121,14 @@ class GameService(
                 val row = action.row ?: error("row required for DISCARD_AND_REVEAL action")
                 val col = action.col ?: error("col required for DISCARD_AND_REVEAL action")
                 engine.discardDrawnCardAndReveal(state, BoardPosition(row, col))
+            }
+            ActionType.PLAY_ACTION_CARD -> {
+                val index = action.actionCardIndex ?: error("actionCardIndex required for PLAY_ACTION_CARD action")
+                engine.playActionCard(state, PlayActionCardCommand(actionCardIndex = index))
+            }
+            ActionType.DISCARD_ACTION_CARD -> {
+                val index = action.actionCardIndex ?: error("actionCardIndex required for DISCARD_ACTION_CARD action")
+                engine.discardActionCard(state, index)
             }
         }
 
@@ -249,6 +257,7 @@ class GameService(
             kind = when (card) {
                 is SkyjoCard.ActionCard.Enlightenment -> ActionCardKind.ENLIGHTENMENT
                 is SkyjoCard.ActionCard.Placeholder -> ActionCardKind.PLACEHOLDER
+                is SkyjoCard.ActionCard.Defense -> ActionCardKind.DEFENSE
             },
             label = card.displayLabel(),
             value = card.scoreValue(),

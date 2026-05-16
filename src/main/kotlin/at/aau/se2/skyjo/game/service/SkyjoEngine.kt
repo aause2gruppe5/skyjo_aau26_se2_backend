@@ -325,6 +325,10 @@ class SkyjoEngine {
         parameters: ActionCardParameters = ActionCardParameters.None,
     ): GameState {
         val playableState = requireReadyForTurnAction(state, "play or discard an action card")
+        if (playableState.phase == GamePhase.FINAL_TURNS) {
+            throw InvalidMoveException("action cards cannot be played or discarded during final turns")
+        }
+
         val currentPlayer = playableState.currentPlayer()
         if (actionCardIndex !in currentPlayer.actionCards.indices) {
             throw InvalidMoveException("action card index $actionCardIndex is not available")
@@ -369,6 +373,13 @@ class SkyjoEngine {
                 phase = GamePhase.FINAL_TURNS,
                 finisherPlayerId = currentPlayer.id,
                 finalTurnsRemaining = finalTurns,
+            )
+        }
+
+        if (state.pendingExtraTurns > 0) {
+            return state.copy(
+                phase = if (state.finisherPlayerId == null) GamePhase.AWAITING_DRAW else GamePhase.FINAL_TURNS,
+                pendingExtraTurns = state.pendingExtraTurns - 1,
             )
         }
 
