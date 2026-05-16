@@ -117,6 +117,17 @@ class GameServiceTest {
         assertTrue(result.players.all { it.actionCards.isEmpty() })
     }
 
+    @Test
+    fun `startGame clears disconnected players from previous game`() {
+        service.startGame(players)
+        service.markPlayerDisconnected(player1Id)
+        assertTrue(service.getCurrentState()!!.disconnectedPlayers.contains("Alice"))
+
+        val result = service.startGame(players)
+
+        assertTrue(result.disconnectedPlayers.isEmpty())
+    }
+
     // ── processAction – error handling ────────────────────────────────────
 
     @Test

@@ -79,6 +79,8 @@ class GameService(
         val playerIds = players.map { it.sessionId }
         val initialReveals = playerIds.associateWith { setOf(BoardPosition(0, 0), BoardPosition(0, 1)) }
 
+        sessionAliases.clear()
+        disconnectedNicknames.clear()
         config = gameConfig
         roundNumber = 1
         totalScores = playerIds.associateWith { 0 }
