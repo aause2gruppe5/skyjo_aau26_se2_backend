@@ -67,4 +67,40 @@ class GameStateTest {
         assertNotEquals(initialState.phase, newState.phase)
     }
 
+    @Test
+    fun consumeDefenseForAttackBlocksAttackOnce(){
+        val defenseCard = SkyjoCard.ActionCard.Defense(id = 151)
+        val target = TestData.createPlayer("player-2").copy(actionCards = listOf(defenseCard))
+        val state = TestData.createDefaultState().copy(
+            players = listOf(TestData.createPlayer("player-1"), target),
+        )
+
+        val result = state.consumeDefenseForAttack(targetPlayerIndex = 1)
+
+        assertTrue(result.blocked)
+        assertTrue(result.state.players[1].actionCards.isEmpty())
+        assertEquals(defenseCard, result.state.actionDiscardPile.topCard())
+    }
+
+    @Test
+    fun consumeDefenseForAttackDoesNothingWithoutDefense(){
+        val state = TestData.createDefaultState()
+
+        val result = state.consumeDefenseForAttack(targetPlayerIndex = 1)
+
+        assertFalse(result.blocked)
+        assertSame(state, result.state)
+    }
+
+    @Test
+    fun consumeDefenseForAttackRejectsUnknownTarget(){
+        val state = TestData.createDefaultState()
+
+        val exception = assertThrows<at.aau.se2.skyjo.game.error.InvalidMoveException> {
+            state.consumeDefenseForAttack(targetPlayerIndex = 99)
+        }
+
+        assertTrue(exception.message!!.contains("target player index 99 is not available"))
+    }
+
 }
