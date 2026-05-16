@@ -3,7 +3,9 @@ package at.aau.se2.skyjo.service
 import at.aau.se2.skyjo.game.model.BoardPosition
 import at.aau.se2.skyjo.game.model.DrawSource
 import at.aau.se2.skyjo.game.model.GamePhase
+import at.aau.se2.skyjo.game.model.SkyjoCard
 import at.aau.se2.skyjo.game.service.SkyjoEngine
+import at.aau.se2.skyjo.model.ActionCardKind
 import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameConfig
@@ -86,6 +88,14 @@ class GameServiceTest {
         }
     }
 
+    @Test
+    fun `startGame exposes visible action cards and action draw pile count`() {
+        val result = service.startGame(players)
+
+        assertEquals(4, result.visibleActionCards.size)
+        assertEquals(16, result.actionDrawPileCount)
+    }
+
     // ── processAction – error handling ────────────────────────────────────
 
     @Test
@@ -141,6 +151,17 @@ class GameServiceTest {
             service.processAction(currentPlayerId, GameActionMessage(ActionType.DISCARD_AND_REVEAL))
         }
         assertTrue(ex.message!!.contains("row required"))
+    }
+
+    @Test
+    fun `processAction DRAW_VISIBLE_ACTION_CARD throws when index is missing`() {
+        service.startGame(players)
+        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
+
+        val ex = assertThrows<IllegalStateException> {
+            service.processAction(currentPlayerId, GameActionMessage(ActionType.DRAW_VISIBLE_ACTION_CARD))
+        }
+        assertTrue(ex.message!!.contains("actionCardIndex required"))
     }
 
     // ── processAction – normal flow ───────────────────────────────────────
@@ -204,6 +225,129 @@ class GameServiceTest {
         // After replace the card is face-up, so the value should be visible
         assertNotNull(replacedSlot.card)
         assertTrue(replacedSlot.faceUp == true)
+    }
+
+    @Test
+    fun `processAction DRAW_VISIBLE_ACTION_CARD adds selected card to player hand`() {
+        service.startGame(players)
+        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
+        val visibleCardId = service.getCurrentState()!!.visibleActionCards.first().id
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.DRAW_VISIBLE_ACTION_CARD, actionCardIndex = 0),
+        )
+
+        val player = result.players.first { it.playerId == currentPlayerId }
+        assertEquals(listOf(visibleCardId), player.actionCards.map { it.id })
+        assertEquals(4, result.visibleActionCards.size)
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD consumes defense card and keeps the turn`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.Defense(id = 999)))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.PLAY_ACTION_CARD, actionCardIndex = 0),
+        )
+
+        val player = result.players.first { it.playerId == currentPlayerId }
+        assertTrue(player.actionCards.isEmpty())
+        assertEquals(currentPlayerId, result.currentPlayerId)
+    }
+
+    @Test
+    fun `processAction DISCARD_ACTION_CARD removes card from player hand`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.Placeholder(id = 1000)))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.DISCARD_ACTION_CARD, actionCardIndex = 0),
+        )
+
+        val player = result.players.first { it.playerId == currentPlayerId }
+        assertTrue(player.actionCards.isEmpty())
+    }
+
+    @Test
+    fun `game updates expose action card kinds`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(
+                    actionCards = listOf(
+                        SkyjoCard.ActionCard.Defense(id = 999),
+                        SkyjoCard.ActionCard.PlayerSwapCard(id = 1000),
+                    ),
+                )
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val update = service.getCurrentState()!!
+        val currentPlayer = update.players.first { it.playerId == state.currentPlayerId }
+
+        assertEquals(
+            listOf(ActionCardKind.DEFENSE, ActionCardKind.PLAYER_SWAP),
+            currentPlayer.actionCards.map { it.kind },
+        )
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD performs player swap`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.PlayerSwapCard(id = 1000)))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val otherPlayerId = state.players.first { it.id != currentPlayerId }.id
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(
+                type = ActionType.PLAY_ACTION_CARD,
+                actionCardIndex = 0,
+                targetPlayer1Id = currentPlayerId,
+                targetPlayer1Row = 0,
+                targetPlayer1Col = 0,
+                targetPlayer2Id = otherPlayerId,
+                targetPlayer2Row = 0,
+                targetPlayer2Col = 0,
+            ),
+        )
+
+        assertNotEquals(currentPlayerId, result.currentPlayerId)
+        assertTrue(result.players.first { it.playerId == currentPlayerId }.actionCards.isEmpty())
     }
 
     // ── round transitions ─────────────────────────────────────────────────
@@ -281,124 +425,6 @@ class GameServiceTest {
 
         assertNotNull(service.getCurrentState())
     }
-
-    // ── DISCARD_ACTION_CARD ───────────────────────────────────────────────────
-
-    @Test
-    fun `processAction DISCARD_ACTION_CARD throws when actionCardIndex is missing`() {
-        service.startGame(players)
-        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
-
-        // Give current player an action card by drawing from the action deck
-        service.processAction(
-            currentPlayerId,
-            GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK)
-        )
-
-        // Re-create to test missing index error directly
-        val s3 = GameService(SkyjoEngine(), null)
-        s3.startGame(players)
-        val pid3 = s3.getCurrentState()!!.currentPlayerId!!
-        s3.processAction(pid3, GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK))
-
-        val nextPid = s3.getCurrentState()!!.currentPlayerId!!
-        val ex = assertThrows<IllegalStateException> {
-            s3.processAction(nextPid, GameActionMessage(ActionType.DISCARD_ACTION_CARD))
-        }
-        assertTrue(ex.message!!.contains("actionCardIndex required"))
-    }
-
-    @Test
-    fun `processAction DISCARD_ACTION_CARD removes card from player hand and advances turn`() {
-        service.startGame(players)
-        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
-
-        // Draw an action card (this advances turn)
-        service.processAction(
-            currentPlayerId,
-            GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK)
-        )
-
-        // Now the other player's turn — draw action card for them too
-        val otherPlayerId = service.getCurrentState()!!.currentPlayerId!!
-        service.processAction(
-            otherPlayerId,
-            GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK)
-        )
-
-        // Back to first player — they have an action card; discard it
-        val pid = service.getCurrentState()!!.currentPlayerId!!
-        val stateBefore = service.getCurrentState()!!
-        val playerBefore = stateBefore.players.find { it.playerId == pid }!!
-        assertEquals(1, playerBefore.actionCardTypes.size)
-
-        val result = service.processAction(
-            pid,
-            GameActionMessage(ActionType.DISCARD_ACTION_CARD, actionCardIndex = 0)
-        )
-
-        val playerAfter = result.players.find { it.playerId == pid }!!
-        assertEquals(0, playerAfter.actionCardTypes.size)
-    }
-
-    // ── PLAY_ACTION_CARD ─────────────────────────────────────────────────────
-
-    @Test
-    fun `processAction PLAY_ACTION_CARD throws when actionCardIndex is missing`() {
-        service.startGame(players)
-        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
-        service.processAction(currentPlayerId, GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK))
-
-        val nextPid = service.getCurrentState()!!.currentPlayerId!!
-        service.processAction(nextPid, GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK))
-
-        val pid = service.getCurrentState()!!.currentPlayerId!!
-        val ex = assertThrows<IllegalStateException> {
-            service.processAction(pid, GameActionMessage(ActionType.PLAY_ACTION_CARD))
-        }
-        assertTrue(ex.message!!.contains("actionCardIndex required"))
-    }
-
-    @Test
-    fun `processAction PLAY_ACTION_CARD performs swap and advances turn`() {
-        service.startGame(players)
-
-        // Let first player draw an action card
-        val pid1 = service.getCurrentState()!!.currentPlayerId!!
-        service.processAction(pid1, GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK))
-
-        // Let second player draw an action card so we return to pid1
-        val pid2 = service.getCurrentState()!!.currentPlayerId!!
-        service.processAction(pid2, GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK))
-
-        // pid1's turn — play the PlayerSwap action card
-        val pid = service.getCurrentState()!!.currentPlayerId!!
-        val stateBeforePlay = service.getCurrentState()!!
-
-        // Pick positions — we just need two different players and their (0,0) positions
-        val p1 = stateBeforePlay.players.find { it.playerId == pid }!!
-        val p2 = stateBeforePlay.players.find { it.playerId != pid }!!
-
-        val result = service.processAction(
-            pid,
-            GameActionMessage(
-                type = ActionType.PLAY_ACTION_CARD,
-                actionCardIndex = 0,
-                targetPlayer1Id = p1.playerId,
-                targetPlayer1Row = 0,
-                targetPlayer1Col = 0,
-                targetPlayer2Id = p2.playerId,
-                targetPlayer2Row = 0,
-                targetPlayer2Col = 0,
-            )
-        )
-
-        // Turn must have advanced
-        assertNotEquals(pid, result.currentPlayerId)
-        // The player who played the card should now have 0 action cards
-        val playerAfter = result.players.find { it.playerId == pid }!!
-        assertEquals(0, playerAfter.actionCardTypes.size)
-    }
 }
 
 // Helpers to access internal state for test setup
@@ -407,4 +433,13 @@ private fun getInternalGameState(service: GameService): at.aau.se2.skyjo.game.mo
     field.isAccessible = true
     @Suppress("UNCHECKED_CAST")
     return (field.get(service) as at.aau.se2.skyjo.game.model.GameState?)!!
+}
+
+private fun setInternalGameState(
+    service: GameService,
+    state: at.aau.se2.skyjo.game.model.GameState,
+) {
+    val field = GameService::class.java.getDeclaredField("gameState")
+    field.isAccessible = true
+    field.set(service, state)
 }

@@ -18,6 +18,7 @@ data class GameActionMessage(
 
 enum class ActionType {
     DRAW,
+    DRAW_VISIBLE_ACTION_CARD,
     REPLACE,
     DISCARD_AND_REVEAL,
     PLAY_ACTION_CARD,
