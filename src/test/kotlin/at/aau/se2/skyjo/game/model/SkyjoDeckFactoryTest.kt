@@ -78,6 +78,14 @@ class SkyjoDeckFactoryTest {
     }
 
     @Test
+    fun actionDrawPileContainsThreeEnlightenmentCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(3, drawPile.cards.count { it is SkyjoCard.ActionCard.Enlightenment })
+        assertEquals(9, drawPile.cards.count { it is SkyjoCard.ActionCard.Placeholder })
+    }
+
+    @Test
     fun shuffleWithSameSeed(){
         val seed = 42L
         val pile1 = SkyjoDeckFactory.createShuffledDrawPile(seed)

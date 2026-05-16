@@ -1,5 +1,6 @@
 package at.aau.se2.skyjo.model
 
+import at.aau.se2.skyjo.game.model.ACTION_CARD_SCORE
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.RoundResult
 
@@ -45,9 +46,17 @@ enum class CardType { NUMBER, ACTION }
 data class ActionCardDto(
     val id: Int,
     val kind: ActionCardKind,
+    val label: String = kind.label,
+    val value: Int = ACTION_CARD_SCORE,
 )
 
-enum class ActionCardKind { PLACEHOLDER, DEFENSE, SWAP_OWN_CARDS, PLAYER_SWAP }
+enum class ActionCardKind(val label: String) {
+    PLACEHOLDER("Action"),
+    DEFENSE("Defense"),
+    ENLIGHTENMENT("Enlightenment"),
+    SWAP_OWN_CARDS("Swap Own Cards"),
+    PLAYER_SWAP("Swap"),
+}
 
 data class PlayerScoreDto(
     val playerId: String,

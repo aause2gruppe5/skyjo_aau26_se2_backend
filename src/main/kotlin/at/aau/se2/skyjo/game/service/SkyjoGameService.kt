@@ -4,6 +4,7 @@ import at.aau.se2.skyjo.game.model.BoardPosition
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
 import at.aau.se2.skyjo.game.model.PlayActionCardCommand
+import at.aau.se2.skyjo.game.model.PlayActionCardOutcome
 import org.springframework.stereotype.Service
 
 @Service
@@ -60,9 +61,17 @@ class SkyjoGameService(
     }
 
     @Synchronized
-    fun playActionCard(command: PlayActionCardCommand): GameState {
-        currentState = engine.playActionCard(currentState, command)
-        return currentState
+    fun playActionCard(command: PlayActionCardCommand): PlayActionCardOutcome {
+        val resolvedState = engine.playActionCard(currentState, command)
+        val privateActionCardResults = resolvedState.actionCardResult
+            ?.let { result -> mapOf(result.actingPlayerId to result) }
+            ?: emptyMap()
+
+        currentState = resolvedState.copy(actionCardResult = null)
+        return PlayActionCardOutcome(
+            gameState = currentState,
+            privateActionCardResults = privateActionCardResults,
+        )
     }
 
     @Synchronized

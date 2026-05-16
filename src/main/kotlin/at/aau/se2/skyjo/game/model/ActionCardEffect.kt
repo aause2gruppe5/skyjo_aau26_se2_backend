@@ -9,6 +9,34 @@ sealed interface ActionCardEffect {
         override fun apply(state: GameState, parameters: ActionCardParameters): GameState = state
     }
 
+    data object Enlightenment : ActionCardEffect {
+        override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
+            val target = parameters as? ActionCardParameters.BoardLineTarget
+                ?: throw InvalidMoveException("enlightenment requires a board row or column target")
+            val actingPlayerId = state.currentPlayerId
+                ?: throw InvalidMoveException("current player is not available")
+            val targetPlayer = state.players.firstOrNull { it.id == target.targetPlayerId }
+                ?: throw InvalidMoveException("target player ${target.targetPlayerId} is not available")
+            val targetPositions = target.positions()
+            val viewedCards = targetPositions.mapNotNull { position ->
+                when (val slot = targetPlayer.board.slotAt(position)) {
+                    is BoardSlot.Cleared -> null
+                    is BoardSlot.Occupied -> if (slot.faceUp) null else ViewedCard(position, slot.card)
+                }
+            }
+
+            return state.copy(
+                actionCardResult = ActionCardResult.Enlightenment(
+                    actingPlayerId = actingPlayerId,
+                    targetPlayerId = targetPlayer.id,
+                    targetType = target.targetType,
+                    lineIndex = target.lineIndex,
+                    cards = viewedCards,
+                ),
+            )
+        }
+    }
+
     data object Defense : ActionCardEffect {
         override fun apply(state: GameState, parameters: ActionCardParameters): GameState =
             state.copy(pendingExtraTurns = state.pendingExtraTurns + 1)
@@ -16,12 +44,25 @@ sealed interface ActionCardEffect {
 
     data object SwapOwnCards : ActionCardEffect {
         override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
-            if (parameters !is ActionCardParameters.SwapOwnParameters) return state
+            require(parameters is ActionCardParameters.SwapOwnParameters) {
+                "SwapOwnCards effect requires SwapOwnParameters parameters"
+            }
+            if (parameters.pos1 == parameters.pos2) {
+                throw InvalidMoveException("cannot swap the same board position")
+            }
 
-            val currentPlayer = state.currentPlayer()
+            val currentPlayer = state.players.getOrNull(state.currentPlayerIndex)
+                ?: throw InvalidMoveException("current player is not available")
             val board = currentPlayer.board
-            val slot1 = board.slotAt(parameters.pos1) as? BoardSlot.Occupied ?: return state
-            val slot2 = board.slotAt(parameters.pos2) as? BoardSlot.Occupied ?: return state
+            val slot1 = board.slotAt(parameters.pos1)
+            if (slot1 !is BoardSlot.Occupied) {
+                throw InvalidMoveException("slot ${parameters.pos1} of current player is not occupied")
+            }
+
+            val slot2 = board.slotAt(parameters.pos2)
+            if (slot2 !is BoardSlot.Occupied) {
+                throw InvalidMoveException("slot ${parameters.pos2} of current player is not occupied")
+            }
 
             val newSlots = board.slots.toMutableMap()
             newSlots[parameters.pos1] = BoardSlot.Occupied(slot2.card, parameters.faceUp1)
@@ -89,8 +130,25 @@ sealed interface ActionCardEffect {
 
 fun SkyjoCard.ActionCard.toEffect(): ActionCardEffect =
     when (this) {
+        is SkyjoCard.ActionCard.Enlightenment -> ActionCardEffect.Enlightenment
         is SkyjoCard.ActionCard.Defense -> ActionCardEffect.Defense
         is SkyjoCard.ActionCard.SwapOwnCards -> ActionCardEffect.SwapOwnCards
         is SkyjoCard.ActionCard.Placeholder -> ActionCardEffect.Placeholder
         is SkyjoCard.ActionCard.PlayerSwapCard -> ActionCardEffect.PlayerSwap
+    }
+
+private fun ActionCardParameters.BoardLineTarget.positions(): List<BoardPosition> =
+    when (targetType) {
+        BoardLineTargetType.ROW -> {
+            if (lineIndex !in 0 until BoardLayout.ROWS) {
+                throw InvalidMoveException("row index $lineIndex is not available")
+            }
+            BoardLayout.HORIZONTAL_LINES[lineIndex]
+        }
+        BoardLineTargetType.COLUMN -> {
+            if (lineIndex !in 0 until BoardLayout.COLUMNS) {
+                throw InvalidMoveException("column index $lineIndex is not available")
+            }
+            BoardLayout.VERTICAL_LINES[lineIndex]
+        }
     }

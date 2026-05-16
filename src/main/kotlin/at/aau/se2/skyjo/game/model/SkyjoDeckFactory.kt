@@ -13,6 +13,7 @@ object SkyjoDeckFactory {
     }
 
     private const val ACTION_CARD_COUNT = 21
+    private const val ENLIGHTENMENT_CARD_COUNT = 3
     private const val DEFENSE_CARD_COUNT = 3
     private const val SWAP_OWN_CARDS_COUNT = 3
     private const val PLAYER_SWAP_CARD_COUNT = 3
@@ -34,9 +35,11 @@ object SkyjoDeckFactory {
             val id = numberCardCount + index + 1
             when {
                 index < DEFENSE_CARD_COUNT -> SkyjoCard.ActionCard.Defense(id)
-                index < DEFENSE_CARD_COUNT + SWAP_OWN_CARDS_COUNT -> SkyjoCard.ActionCard.SwapOwnCards(id)
-                index < DEFENSE_CARD_COUNT + SWAP_OWN_CARDS_COUNT + PLAYER_SWAP_CARD_COUNT ->
+                index < DEFENSE_CARD_COUNT + ENLIGHTENMENT_CARD_COUNT -> SkyjoCard.ActionCard.Enlightenment(id)
+                index < DEFENSE_CARD_COUNT + ENLIGHTENMENT_CARD_COUNT + PLAYER_SWAP_CARD_COUNT ->
                     SkyjoCard.ActionCard.PlayerSwapCard(id)
+                index < DEFENSE_CARD_COUNT + ENLIGHTENMENT_CARD_COUNT + PLAYER_SWAP_CARD_COUNT + SWAP_OWN_CARDS_COUNT ->
+                    SkyjoCard.ActionCard.SwapOwnCards(id)
                 else -> SkyjoCard.ActionCard.Placeholder(id)
             }
         }.shuffled(random)

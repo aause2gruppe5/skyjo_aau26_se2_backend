@@ -41,6 +41,13 @@ class ActionCardEffectTest {
     }
 
     @Test
+    fun enlightenmentActionCardMapsToEnlightenmentEffect() {
+        val card = SkyjoCard.ActionCard.Enlightenment(id = 1)
+
+        assertSame(ActionCardEffect.Enlightenment, card.toEffect())
+    }
+
+    @Test
     fun defenseActionCardEffectAddsPendingExtraTurn() {
         val state = GameState(pendingExtraTurns = 1)
 
@@ -75,19 +82,35 @@ class ActionCardEffectTest {
     }
 
     @Test
-    fun swapOwnCardsEffectDoesNothingIfParametersAreNotSwapOwnParameters() {
-        val player1Id = "player1"
-        val card1 = SkyjoCard.NumberCard(1, 1)
-        val card2 = SkyjoCard.NumberCard(2, 2)
+    fun swapOwnCardsEffectRejectsMissingParameters() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ActionCardEffect.SwapOwnCards.apply(GameState(), ActionCardParameters.None)
+        }
+    }
 
-        val initialCards = listOf(card1, card2) + List(10) { SkyjoCard.NumberCard(it + 3, 3) }
-        val playerBoard = PlayerBoard.fromCards(initialCards, setOf(BoardPosition(0, 0), BoardPosition(1, 1)))
-        val playerState = PlayerState(player1Id, playerBoard)
-        val state = GameState(players = listOf(playerState))
+    @Test
+    fun swapOwnCardsEffectRejectsClearedSlot() {
+        val pos1 = BoardPosition(0, 0)
+        val pos2 = BoardPosition(0, 1)
+        val state = GameState(
+            players = listOf(
+                PlayerState(id = "p1", board = buildBoard(mapOf(pos1 to BoardSlot.Cleared))),
+            ),
+        )
 
-        val result = ActionCardEffect.SwapOwnCards.apply(state, ActionCardParameters.None)
+        val exception = assertThrows(InvalidMoveException::class.java) {
+            ActionCardEffect.SwapOwnCards.apply(
+                state,
+                ActionCardParameters.SwapOwnParameters(
+                    pos1 = pos1,
+                    faceUp1 = false,
+                    pos2 = pos2,
+                    faceUp2 = true,
+                ),
+            )
+        }
 
-        assertSame(state, result)
+        assertTrue(exception.message!!.contains("slot $pos1 of current player is not occupied"))
     }
 
     @Test

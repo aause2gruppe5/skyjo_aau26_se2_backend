@@ -1,12 +1,20 @@
 package at.aau.se2.skyjo.service
 
+import at.aau.se2.skyjo.game.model.ActionCardParameters
+import at.aau.se2.skyjo.game.model.BoardLayout
+import at.aau.se2.skyjo.game.model.BoardLineTargetType
 import at.aau.se2.skyjo.game.model.BoardPosition
 import at.aau.se2.skyjo.game.model.BoardSlot
 import at.aau.se2.skyjo.game.model.DrawSource
 import at.aau.se2.skyjo.game.model.GamePhase
+import at.aau.se2.skyjo.game.model.GameState
+import at.aau.se2.skyjo.game.model.PlayerBoard
+import at.aau.se2.skyjo.game.model.PlayerState
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.SkyjoCard
 import at.aau.se2.skyjo.game.service.SkyjoEngine
 import at.aau.se2.skyjo.model.ActionCardKind
+import at.aau.se2.skyjo.model.ActionCardResultType
 import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameConfig
@@ -95,6 +103,30 @@ class GameServiceTest {
 
         assertEquals(4, result.visibleActionCards.size)
         assertEquals(16, result.actionDrawPileCount)
+        assertTrue(result.visibleActionCards.all { it.value == 10 })
+        assertTrue(
+            result.visibleActionCards.all {
+                it.kind in setOf(
+                    ActionCardKind.ENLIGHTENMENT,
+                    ActionCardKind.DEFENSE,
+                    ActionCardKind.SWAP_OWN_CARDS,
+                    ActionCardKind.PLAYER_SWAP,
+                    ActionCardKind.PLACEHOLDER,
+                )
+            },
+        )
+        assertTrue(result.players.all { it.actionCards.isEmpty() })
+    }
+
+    @Test
+    fun `startGame clears disconnected players from previous game`() {
+        service.startGame(players)
+        service.markPlayerDisconnected(player1Id)
+        assertTrue(service.getCurrentState()!!.disconnectedPlayers.contains("Alice"))
+
+        val result = service.startGame(players)
+
+        assertTrue(result.disconnectedPlayers.isEmpty())
     }
 
     // ── processAction – error handling ────────────────────────────────────
@@ -221,6 +253,40 @@ class GameServiceTest {
         val result = service.processAction(firstPlayerId, GameActionMessage(ActionType.DISCARD_AND_REVEAL, row = 1, col = 0))
 
         assertNotEquals(firstPlayerId, result.currentPlayerId)
+    }
+
+    @Test
+    fun `processAction DRAW from ACTION_DECK adds card to current player's action hand`() {
+        service.startGame(players)
+        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK),
+        )
+
+        val player = result.players.first { it.playerId == currentPlayerId }
+        assertEquals(1, player.actionCards.size)
+        assertEquals(15, result.actionDrawPileCount)
+        assertEquals(10, player.actionCards.single().value)
+    }
+
+    @Test
+    fun `processAction DRAW_VISIBLE_ACTION_CARD adds selected visible card to current player's action hand`() {
+        service.startGame(players)
+        val stateBeforeDraw = service.getCurrentState()!!
+        val currentPlayerId = stateBeforeDraw.currentPlayerId!!
+        val visibleCard = stateBeforeDraw.visibleActionCards.first()
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.DRAW_VISIBLE_ACTION_CARD, actionCardIndex = 0),
+        )
+
+        val player = result.players.first { it.playerId == currentPlayerId }
+        assertEquals(visibleCard.id, player.actionCards.single().id)
+        assertEquals(4, result.visibleActionCards.size)
+        assertEquals(15, result.actionDrawPileCount)
     }
 
     @Test
@@ -536,6 +602,129 @@ class GameServiceTest {
     // ── round transitions ─────────────────────────────────────────────────
 
     @Test
+    fun `playActionCard Enlightenment row returns private row and public update keeps cards hidden`() {
+        val targetRow = 1
+        val board = playerBoardWithValues(
+            mapOf(
+                BoardPosition(targetRow, 0) to 2,
+                BoardPosition(targetRow, 1) to 4,
+                BoardPosition(targetRow, 2) to 6,
+                BoardPosition(targetRow, 3) to 8,
+            ),
+            faceUp = false,
+        )
+        setInternalGameState(service, gameStateWithActionCard(player1Id, board))
+
+        val result = service.playActionCard(
+            player1Id,
+            PlayActionCardCommand(
+                actionCardIndex = 0,
+                parameters = ActionCardParameters.BoardLineTarget(
+                    targetPlayerId = player1Id,
+                    targetType = BoardLineTargetType.ROW,
+                    lineIndex = targetRow,
+                ),
+            ),
+        )
+
+        val privateResult = result.privateActionCardResults[player1Id]!!
+        assertEquals(setOf(player1Id), result.privateActionCardResults.keys)
+        assertEquals(ActionCardResultType.ENLIGHTENMENT, privateResult.type)
+        assertEquals(0, privateResult.actionCardIndex)
+        assertEquals(BoardLineTargetType.ROW, privateResult.targetType)
+        assertEquals(targetRow, privateResult.lineIndex)
+        assertEquals(listOf(2, 4, 6, 8), privateResult.inspectedValues)
+        assertEquals(listOf(0, 1, 2, 3), privateResult.inspectedCards.map { it.col })
+
+        val publicRow = result.gameUpdate.players.first { it.playerId == player1Id }.board[targetRow]
+        assertTrue(publicRow.all { it.faceUp == false })
+        assertTrue(publicRow.all { it.card == null })
+        assertTrue(result.gameUpdate.players.first { it.playerId == player1Id }.actionCards.isEmpty())
+
+        val storedState = getInternalGameState(service)
+        BoardLayout.HORIZONTAL_LINES[targetRow].forEach { position ->
+            val slot = storedState.players.first { it.id == player1Id }.board.slotAt(position) as BoardSlot.Occupied
+            assertFalse(slot.faceUp)
+        }
+    }
+
+    @Test
+    fun `playActionCard Enlightenment column returns private column`() {
+        val targetColumn = 2
+        val board = playerBoardWithValues(
+            mapOf(
+                BoardPosition(0, targetColumn) to -1,
+                BoardPosition(1, targetColumn) to 5,
+                BoardPosition(2, targetColumn) to 12,
+            ),
+            faceUp = false,
+        )
+        setInternalGameState(service, gameStateWithActionCard(player1Id, board))
+
+        val result = service.playActionCard(
+            player1Id,
+            PlayActionCardCommand(
+                actionCardIndex = 0,
+                parameters = ActionCardParameters.BoardLineTarget(
+                    targetPlayerId = player1Id,
+                    targetType = BoardLineTargetType.COLUMN,
+                    lineIndex = targetColumn,
+                ),
+            ),
+        )
+
+        val privateResult = result.privateActionCardResults[player1Id]!!
+        assertEquals(BoardLineTargetType.COLUMN, privateResult.targetType)
+        assertEquals(targetColumn, privateResult.lineIndex)
+        assertEquals(listOf(-1, 5, 12), privateResult.inspectedValues)
+        assertEquals(listOf(0, 1, 2), privateResult.inspectedCards.map { it.row })
+        assertEquals(listOf(targetColumn, targetColumn, targetColumn), privateResult.inspectedCards.map { it.col })
+    }
+
+    @Test
+    fun `playActionCard Enlightenment can inspect another player's hidden row privately`() {
+        val targetRow = 0
+        val otherBoard = playerBoardWithValues(
+            mapOf(
+                BoardPosition(targetRow, 0) to 3,
+                BoardPosition(targetRow, 1) to 6,
+                BoardPosition(targetRow, 2) to 9,
+                BoardPosition(targetRow, 3) to 12,
+            ),
+            faceUp = false,
+        )
+        setInternalGameState(
+            service,
+            gameStateWithActionCard(
+                playerId = player1Id,
+                board = playerBoardWithValues(emptyMap()),
+                otherBoard = otherBoard,
+            ),
+        )
+
+        val result = service.playActionCard(
+            player1Id,
+            PlayActionCardCommand(
+                actionCardIndex = 0,
+                parameters = ActionCardParameters.BoardLineTarget(
+                    targetPlayerId = player2Id,
+                    targetType = BoardLineTargetType.ROW,
+                    lineIndex = targetRow,
+                ),
+            ),
+        )
+
+        val privateResult = result.privateActionCardResults[player1Id]!!
+        assertEquals(setOf(player1Id), result.privateActionCardResults.keys)
+        assertEquals(player2Id, privateResult.targetPlayerId)
+        assertEquals(listOf(3, 6, 9, 12), privateResult.inspectedValues)
+
+        val publicRow = result.gameUpdate.players.first { it.playerId == player2Id }.board[targetRow]
+        assertTrue(publicRow.all { it.faceUp == false })
+        assertTrue(publicRow.all { it.card == null })
+    }
+
+    @Test
     fun `handleRoundFinished accumulates scores into totalScores`() {
         service.startGame(players, GameConfig(maxRounds = 2))
 
@@ -618,11 +807,51 @@ private fun getInternalGameState(service: GameService): at.aau.se2.skyjo.game.mo
     return (field.get(service) as at.aau.se2.skyjo.game.model.GameState?)!!
 }
 
-private fun setInternalGameState(
-    service: GameService,
-    state: at.aau.se2.skyjo.game.model.GameState,
-) {
-    val field = GameService::class.java.getDeclaredField("gameState")
-    field.isAccessible = true
-    field.set(service, state)
+private fun setInternalGameState(service: GameService, state: GameState) {
+    val stateField = GameService::class.java.getDeclaredField("gameState")
+    stateField.isAccessible = true
+    stateField.set(service, state)
+
+    val roundField = GameService::class.java.getDeclaredField("roundNumber")
+    roundField.isAccessible = true
+    roundField.set(service, 1)
+
+    val totalScoresField = GameService::class.java.getDeclaredField("totalScores")
+    totalScoresField.isAccessible = true
+    totalScoresField.set(service, state.players.associate { it.id to 0 })
+}
+
+private fun gameStateWithActionCard(
+    playerId: String,
+    board: PlayerBoard,
+    otherBoard: PlayerBoard = playerBoardWithValues(emptyMap()),
+): GameState {
+    val currentPlayer = PlayerState(
+        id = playerId,
+        board = board,
+        actionCards = listOf(SkyjoCard.ActionCard.Enlightenment(id = 151)),
+    )
+    val otherPlayer = PlayerState(
+        id = "player2",
+        board = otherBoard,
+    )
+    return GameState(
+        players = listOf(currentPlayer, otherPlayer),
+        currentPlayerIndex = 0,
+        phase = GamePhase.AWAITING_DRAW,
+    )
+}
+
+private fun playerBoardWithValues(
+    positionValues: Map<BoardPosition, Int>,
+    faceUp: Boolean = false,
+): PlayerBoard {
+    val slots = BoardLayout.POSITIONS.associateWith { position ->
+        val id = position.row * BoardLayout.COLUMNS + position.column
+        BoardSlot.Occupied(
+            card = SkyjoCard.NumberCard(id = id, value = positionValues[position] ?: 0),
+            faceUp = faceUp,
+        )
+    }
+    return PlayerBoard(slots)
 }

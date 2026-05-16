@@ -7,12 +7,16 @@ import at.aau.se2.skyjo.game.model.BoardSlot
 import at.aau.se2.skyjo.game.model.DrawSource
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
+import at.aau.se2.skyjo.game.model.ActionCardResult
 import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.SkyjoCard
+import at.aau.se2.skyjo.game.model.displayLabel
 import at.aau.se2.skyjo.game.model.scoreValue
 import at.aau.se2.skyjo.game.service.SkyjoEngine
 import at.aau.se2.skyjo.model.ActionCardDto
 import at.aau.se2.skyjo.model.ActionCardKind
+import at.aau.se2.skyjo.model.ActionCardResultMessage
+import at.aau.se2.skyjo.model.ActionCardResultType
 import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.BoardSlotDto
 import at.aau.se2.skyjo.model.CardDto
@@ -20,8 +24,10 @@ import at.aau.se2.skyjo.model.CardType
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameConfig
 import at.aau.se2.skyjo.model.GameUpdateMessage
+import at.aau.se2.skyjo.model.InspectedCardDto
 import at.aau.se2.skyjo.model.PlayerBoardDto
 import at.aau.se2.skyjo.model.PlayerScoreDto
+import at.aau.se2.skyjo.model.PlayActionCardMessageResult
 import at.aau.se2.skyjo.model.SlotType
 import at.aau.se2.skyjo.model.lobby.LobbyPlayer
 import at.aau.se2.skyjo.persistence.GameRepository
@@ -73,6 +79,8 @@ class GameService(
         val playerIds = players.map { it.sessionId }
         val initialReveals = playerIds.associateWith { setOf(BoardPosition(0, 0), BoardPosition(0, 1)) }
 
+        sessionAliases.clear()
+        disconnectedNicknames.clear()
         config = gameConfig
         roundNumber = 1
         totalScores = playerIds.associateWith { 0 }
@@ -103,8 +111,9 @@ class GameService(
                 }
             }
             ActionType.DRAW_VISIBLE_ACTION_CARD -> {
-                val index = action.actionCardIndex ?: error("actionCardIndex required for DRAW_VISIBLE_ACTION_CARD action")
-                engine.drawVisibleActionCard(state, index)
+                val actionCardIndex = action.actionCardIndex
+                    ?: error("actionCardIndex required for DRAW_VISIBLE_ACTION_CARD action")
+                engine.drawVisibleActionCard(state, actionCardIndex)
             }
             ActionType.REPLACE -> {
                 val row = action.row ?: error("row required for REPLACE action")
@@ -125,6 +134,8 @@ class GameService(
                     is SkyjoCard.ActionCard.SwapOwnCards -> action.toSwapOwnParameters(state)
                     is SkyjoCard.ActionCard.Defense,
                     is SkyjoCard.ActionCard.Placeholder -> ActionCardParameters.None
+                    is SkyjoCard.ActionCard.Enlightenment ->
+                        error("enlightenment requires private PLAY_ACTION_CARD command parameters")
                 }
 
                 engine.playActionCard(
@@ -149,6 +160,35 @@ class GameService(
         }
 
         toUpdateMessage(updatedState, gameOver = false)
+    }
+
+    fun playActionCard(playerId: String, command: PlayActionCardCommand): PlayActionCardMessageResult = lock.withLock {
+        val state = gameState ?: error("game has not started yet")
+        val resolvedPlayerId = sessionAliases[playerId] ?: playerId
+
+        if (state.currentPlayerId != resolvedPlayerId) {
+            error("not your turn (current player: ${state.currentPlayerId})")
+        }
+
+        val updatedStateWithResult = engine.playActionCard(state, command)
+        val privateResults = updatedStateWithResult.actionCardResult
+            ?.let { result -> mapOf(playerId to result.toMessage(command.actionCardIndex)) }
+            ?: emptyMap()
+        val updatedState = updatedStateWithResult.copy(actionCardResult = null)
+
+        gameState = updatedState
+        currentGameId?.let { gameRepository?.saveGame(it, updatedState) }
+
+        val update = if (updatedState.phase == GamePhase.ROUND_FINISHED) {
+            handleRoundFinished(updatedState)
+        } else {
+            toUpdateMessage(updatedState, gameOver = false)
+        }
+
+        PlayActionCardMessageResult(
+            gameUpdate = update,
+            privateActionCardResults = privateResults,
+        )
     }
 
     fun getCurrentState(): GameUpdateMessage? = lock.withLock {
@@ -235,11 +275,14 @@ class GameService(
         ActionCardDto(
             id = card.id,
             kind = when (card) {
+                is SkyjoCard.ActionCard.Enlightenment -> ActionCardKind.ENLIGHTENMENT
                 is SkyjoCard.ActionCard.Placeholder -> ActionCardKind.PLACEHOLDER
                 is SkyjoCard.ActionCard.Defense -> ActionCardKind.DEFENSE
                 is SkyjoCard.ActionCard.SwapOwnCards -> ActionCardKind.SWAP_OWN_CARDS
                 is SkyjoCard.ActionCard.PlayerSwapCard -> ActionCardKind.PLAYER_SWAP
             },
+            label = card.displayLabel(),
+            value = card.scoreValue(),
         )
 
     private fun GameActionMessage.toSwapOwnParameters(state: GameState): ActionCardParameters.SwapOwnParameters {
@@ -262,6 +305,29 @@ class GameService(
             faceUp2 = slot1.faceUp,
         )
     }
+
+    private fun ActionCardResult.toMessage(actionCardIndex: Int): ActionCardResultMessage =
+        when (this) {
+            is ActionCardResult.Enlightenment -> {
+                val inspectedCards = cards.map { viewedCard ->
+                    InspectedCardDto(
+                        row = viewedCard.position.row,
+                        col = viewedCard.position.column,
+                        value = viewedCard.card?.scoreValue(),
+                        card = viewedCard.card?.let(::toCardDto),
+                    )
+                }
+                ActionCardResultMessage(
+                    type = ActionCardResultType.ENLIGHTENMENT,
+                    actionCardIndex = actionCardIndex,
+                    targetPlayerId = targetPlayerId,
+                    targetType = targetType,
+                    lineIndex = lineIndex,
+                    inspectedValues = inspectedCards.map { it.value },
+                    inspectedCards = inspectedCards,
+                )
+            }
+        }
 
     private fun GameActionMessage.toPlayerSwapParameters(): ActionCardParameters.PlayerSwap {
         val p1Id = targetPlayer1Id ?: error("targetPlayer1Id required for PLAY_ACTION_CARD")

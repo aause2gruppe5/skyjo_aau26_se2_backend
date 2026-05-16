@@ -4,8 +4,8 @@ import at.aau.se2.skyjo.game.error.GameNotStartedException
 import at.aau.se2.skyjo.game.error.InvalidGameSetupException
 import at.aau.se2.skyjo.game.error.InvalidMoveException
 import at.aau.se2.skyjo.game.error.RoundAlreadyFinishedException
-import at.aau.se2.skyjo.game.model.ActionCardParameters
 import at.aau.se2.skyjo.game.model.ActionDiscardPile
+import at.aau.se2.skyjo.game.model.ActionCardParameters
 import at.aau.se2.skyjo.game.model.ActionDrawPile
 import at.aau.se2.skyjo.game.model.BoardLayout
 import at.aau.se2.skyjo.game.model.BoardPosition
@@ -15,9 +15,9 @@ import at.aau.se2.skyjo.game.model.DrawPile
 import at.aau.se2.skyjo.game.model.DrawSource
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
-import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.PlayerBoard
 import at.aau.se2.skyjo.game.model.PlayerState
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.RoundResult
 import at.aau.se2.skyjo.game.model.SkyjoCard
 import at.aau.se2.skyjo.game.model.SkyjoDeckFactory
@@ -57,7 +57,7 @@ class SkyjoEngine {
             )
         }
 
-        val openingDiscard = drawPile.draw()
+        val openingDiscard = drawPile.draw() // one card gets disposed on game start according to rules
         val startingPlayerIndex = determineStartingPlayerIndex(players, initialReveals)
 
         return GameState(
@@ -82,6 +82,7 @@ class SkyjoEngine {
             drawnCard = drawResult.card,
             drawSource = DrawSource.DECK,
             phase = GamePhase.AWAITING_REPLACEMENT,
+            actionCardResult = null,
         )
     }
 
@@ -93,6 +94,7 @@ class SkyjoEngine {
             drawnCard = drawResult.card,
             drawSource = DrawSource.DISCARD,
             phase = GamePhase.AWAITING_REPLACEMENT,
+            actionCardResult = null,
         )
     }
 
@@ -126,6 +128,7 @@ class SkyjoEngine {
                 visibleActionCards = visibleActionCards,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
         )
     }
@@ -149,6 +152,7 @@ class SkyjoEngine {
                 actionDrawPile = drawResult.remainingPile,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
         )
     }
@@ -186,6 +190,7 @@ class SkyjoEngine {
                 discardPile = updatedDiscardPile,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
         )
     }
@@ -220,24 +225,8 @@ class SkyjoEngine {
                 discardPile = updatedDiscardPile,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
-        )
-    }
-
-    private fun setupActionCards(actionDrawPile: ActionDrawPile): ActionCardSetup {
-        var remainingPile = actionDrawPile
-        val visibleCards = buildList {
-            repeat(VISIBLE_ACTION_CARD_COUNT) {
-                val drawResult = remainingPile.draw()
-                add(drawResult.card)
-                remainingPile = drawResult.remainingPile
-            }
-        }
-        val discardResult = remainingPile.draw()
-        return ActionCardSetup(
-            drawPile = discardResult.remainingPile,
-            visibleCards = visibleCards,
-            discardPile = ActionDiscardPile(listOf(discardResult.card)),
         )
     }
 
@@ -260,6 +249,23 @@ class SkyjoEngine {
         if (initialReveals.values.any { it.size != 2 }) {
             throw InvalidGameSetupException("each player must reveal exactly two positions")
         }
+    }
+
+    private fun setupActionCards(actionDrawPile: ActionDrawPile): ActionCardSetup {
+        var remainingPile = actionDrawPile
+        val visibleCards = buildList {
+            repeat(VISIBLE_ACTION_CARD_COUNT) {
+                val drawResult = remainingPile.draw()
+                add(drawResult.card)
+                remainingPile = drawResult.remainingPile
+            }
+        }
+        val discardResult = remainingPile.draw()
+        return ActionCardSetup(
+            drawPile = discardResult.remainingPile,
+            visibleCards = visibleCards,
+            discardPile = ActionDiscardPile(listOf(discardResult.card)),
+        )
     }
 
     private fun requireActiveRound(state: GameState): GameState {
@@ -340,6 +346,7 @@ class SkyjoEngine {
             actionDiscardPile = playableState.actionDiscardPile.add(actionCard),
             drawnCard = null,
             drawSource = null,
+            actionCardResult = null,
         )
         val stateAfterAction = if (applyEffect) {
             actionCard.toEffect().apply(stateAfterDiscard, parameters)
@@ -358,7 +365,7 @@ class SkyjoEngine {
             val finalTurns = state.players.size - 1
             val nextPlayerIndex = nextPlayerIndex(state.currentPlayerIndex, state.players.size)
             if (finalTurns <= 0) {
-                return finishRound(state.copy(finisherPlayerId = currentPlayer.id, finalTurnsRemaining = 0))
+                return finishRoundAfterTurn(state.copy(finisherPlayerId = currentPlayer.id, finalTurnsRemaining = 0))
             }
 
             return state.copy(
@@ -379,7 +386,7 @@ class SkyjoEngine {
         if (state.finisherPlayerId != null) {
             val remainingFinalTurns = state.finalTurnsRemaining - 1
             if (remainingFinalTurns <= 0) {
-                return finishRound(state.copy(finalTurnsRemaining = 0))
+                return finishRoundAfterTurn(state.copy(finalTurnsRemaining = 0))
             }
 
             return state.copy(
@@ -393,6 +400,11 @@ class SkyjoEngine {
             currentPlayerIndex = nextPlayerIndex(state.currentPlayerIndex, state.players.size),
             phase = GamePhase.AWAITING_DRAW,
         )
+    }
+
+    private fun finishRoundAfterTurn(state: GameState): GameState {
+        val actionCardResult = state.actionCardResult
+        return finishRound(state).copy(actionCardResult = actionCardResult)
     }
 
     internal fun finishRound(state: GameState): GameState {
@@ -434,8 +446,11 @@ class SkyjoEngine {
             drawSource = null,
             finalTurnsRemaining = 0,
             roundResult = roundResult,
+            actionCardResult = null,
         )
     }
+
+    private fun nextPlayerIndex(currentIndex: Int, playerCount: Int): Int = (currentIndex + 1) % playerCount
 
     internal fun determineStartingPlayerIndex(
         players: List<PlayerState>,
@@ -444,8 +459,6 @@ class SkyjoEngine {
         players.indices.maxByOrNull { index ->
             players[index].board.visibleValueSum(initialReveals.getValue(players[index].id))
         } ?: 0
-
-    private fun nextPlayerIndex(currentIndex: Int, playerCount: Int): Int = (currentIndex + 1) % playerCount
 }
 
 private fun <T> List<T>.updated(index: Int, value: T): List<T> = mapIndexed { currentIndex, item ->
