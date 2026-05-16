@@ -1,6 +1,7 @@
 package at.aau.se2.skyjo.service
 
 import at.aau.se2.skyjo.game.model.BoardPosition
+import at.aau.se2.skyjo.game.model.BoardSlot
 import at.aau.se2.skyjo.game.model.DrawSource
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.SkyjoCard
@@ -154,6 +155,18 @@ class GameServiceTest {
     }
 
     @Test
+    fun `processAction PLAY_ACTION_CARD throws when index is missing`() {
+        service.startGame(players)
+        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
+
+        val exception = assertThrows<IllegalStateException> {
+            service.processAction(currentPlayerId, GameActionMessage(ActionType.PLAY_ACTION_CARD))
+        }
+
+        assertTrue(exception.message!!.contains("actionCardIndex required"))
+    }
+
+    @Test
     fun `processAction DRAW_VISIBLE_ACTION_CARD throws when index is missing`() {
         service.startGame(players)
         val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
@@ -296,7 +309,13 @@ class GameServiceTest {
         val state = getInternalGameState(service)
         val updatedPlayers = state.players.mapIndexed { index, player ->
             if (index == state.currentPlayerIndex) {
-                player.copy(actionCards = listOf(SkyjoCard.ActionCard.Defense(id = 999)))
+                player.copy(
+                    actionCards = listOf(
+                        SkyjoCard.ActionCard.Defense(id = 999),
+                        SkyjoCard.ActionCard.PlayerSwapCard(id = 1000),
+                        SkyjoCard.ActionCard.SwapOwnCards(id = 1001),
+                    ),
+                )
             } else {
                 player
             }
@@ -306,8 +325,213 @@ class GameServiceTest {
         val update = service.getCurrentState()!!
         val currentPlayer = update.players.first { it.playerId == state.currentPlayerId }
 
-        assertEquals(ActionCardKind.DEFENSE, currentPlayer.actionCards.single().kind)
+        assertEquals(
+            listOf(ActionCardKind.DEFENSE, ActionCardKind.PLAYER_SWAP, ActionCardKind.SWAP_OWN_CARDS),
+            currentPlayer.actionCards.map { it.kind },
+        )
     }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD performs player swap`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.PlayerSwapCard(id = 1000)))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val otherPlayerId = state.players.first { it.id != currentPlayerId }.id
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(
+                type = ActionType.PLAY_ACTION_CARD,
+                actionCardIndex = 0,
+                targetPlayer1Id = currentPlayerId,
+                targetPlayer1Row = 0,
+                targetPlayer1Col = 0,
+                targetPlayer2Id = otherPlayerId,
+                targetPlayer2Row = 0,
+                targetPlayer2Col = 0,
+            ),
+        )
+
+        assertNotEquals(currentPlayerId, result.currentPlayerId)
+        assertTrue(result.players.first { it.playerId == currentPlayerId }.actionCards.isEmpty())
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD performs own card swap`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val pos1 = BoardPosition(0, 0)
+        val pos2 = BoardPosition(0, 1)
+        val slot1 = state.currentPlayer().board.slotAt(pos1) as BoardSlot.Occupied
+        val slot2 = state.currentPlayer().board.slotAt(pos2) as BoardSlot.Occupied
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.SwapOwnCards(id = 1001)))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(
+                type = ActionType.PLAY_ACTION_CARD,
+                actionCardIndex = 0,
+                targetPlayer1Row = pos1.row,
+                targetPlayer1Col = pos1.column,
+                targetPlayer2Row = pos2.row,
+                targetPlayer2Col = pos2.column,
+            ),
+        )
+
+        val updatedState = getInternalGameState(service)
+        val updatedPlayer = updatedState.players.first { it.id == currentPlayerId }
+        val updatedSlot1 = updatedPlayer.board.slotAt(pos1) as BoardSlot.Occupied
+        val updatedSlot2 = updatedPlayer.board.slotAt(pos2) as BoardSlot.Occupied
+
+        assertEquals(slot2.card, updatedSlot1.card)
+        assertEquals(slot2.faceUp, updatedSlot1.faceUp)
+        assertEquals(slot1.card, updatedSlot2.card)
+        assertEquals(slot1.faceUp, updatedSlot2.faceUp)
+        assertTrue(result.players.first { it.playerId == currentPlayerId }.actionCards.isEmpty())
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD rejects unavailable action card index`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.PlayerSwapCard(id = 1000)))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val exception = assertThrows<IllegalStateException> {
+            service.processAction(
+                currentPlayerId,
+                GameActionMessage(ActionType.PLAY_ACTION_CARD, actionCardIndex = 3),
+            )
+        }
+
+        assertTrue(exception.message!!.contains("action card index 3 is not available"))
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD with placeholder uses no parameters`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.Placeholder(id = 1000)))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val result = service.processAction(
+            currentPlayerId,
+            GameActionMessage(ActionType.PLAY_ACTION_CARD, actionCardIndex = 0),
+        )
+
+        assertNotEquals(currentPlayerId, result.currentPlayerId)
+        assertTrue(result.players.first { it.playerId == currentPlayerId }.actionCards.isEmpty())
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD player swap requires first player id`() {
+        assertPlayerSwapMissingFieldFails(
+            action = validPlayerSwapAction().copy(targetPlayer1Id = null),
+            expectedMessage = "targetPlayer1Id required",
+        )
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD player swap requires first player row`() {
+        assertPlayerSwapMissingFieldFails(
+            action = validPlayerSwapAction().copy(targetPlayer1Row = null),
+            expectedMessage = "targetPlayer1Row required",
+        )
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD player swap requires first player col`() {
+        assertPlayerSwapMissingFieldFails(
+            action = validPlayerSwapAction().copy(targetPlayer1Col = null),
+            expectedMessage = "targetPlayer1Col required",
+        )
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD player swap requires second player id`() {
+        assertPlayerSwapMissingFieldFails(
+            action = validPlayerSwapAction().copy(targetPlayer2Id = null),
+            expectedMessage = "targetPlayer2Id required",
+        )
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD player swap requires second player row`() {
+        assertPlayerSwapMissingFieldFails(
+            action = validPlayerSwapAction().copy(targetPlayer2Row = null),
+            expectedMessage = "targetPlayer2Row required",
+        )
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD player swap requires second player col`() {
+        assertPlayerSwapMissingFieldFails(
+            action = validPlayerSwapAction().copy(targetPlayer2Col = null),
+            expectedMessage = "targetPlayer2Col required",
+        )
+    }
+
+    private fun assertPlayerSwapMissingFieldFails(action: GameActionMessage, expectedMessage: String) {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.PlayerSwapCard(id = 1000)))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val exception = assertThrows<IllegalStateException> {
+            service.processAction(currentPlayerId, action)
+        }
+
+        assertTrue(exception.message!!.contains(expectedMessage))
+    }
+
+    private fun validPlayerSwapAction(): GameActionMessage =
+        GameActionMessage(
+            type = ActionType.PLAY_ACTION_CARD,
+            actionCardIndex = 0,
+            targetPlayer1Id = player1Id,
+            targetPlayer1Row = 0,
+            targetPlayer1Col = 0,
+            targetPlayer2Id = player2Id,
+            targetPlayer2Row = 0,
+            targetPlayer2Col = 0,
+        )
 
     // ── round transitions ─────────────────────────────────────────────────
 

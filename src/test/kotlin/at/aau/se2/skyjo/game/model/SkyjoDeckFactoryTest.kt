@@ -39,6 +39,20 @@ class SkyjoDeckFactoryTest {
     }
 
     @Test
+    fun actionDrawPileContainsThreePlayerSwapCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(3, drawPile.cards.count { it is SkyjoCard.ActionCard.PlayerSwapCard })
+    }
+
+    @Test
+    fun actionDrawPileContainsThreeSwapOwnCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(3, drawPile.cards.count { it is SkyjoCard.ActionCard.SwapOwnCards })
+    }
+
+    @Test
     fun cardsHaveUniqueId(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
         val actionDrawPile = SkyjoDeckFactory.createShuffledActionDrawPile()

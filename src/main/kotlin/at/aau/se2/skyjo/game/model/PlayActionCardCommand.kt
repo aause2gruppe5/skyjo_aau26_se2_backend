@@ -14,4 +14,11 @@ sealed interface ActionCardParameters {
         val pos2: BoardPosition,
         val faceUp2: Boolean,
     ) : ActionCardParameters
+
+    data class PlayerSwap(
+        val player1Id: String,
+        val player1Position: BoardPosition,
+        val player2Id: String,
+        val player2Position: BoardPosition,
+    ) : ActionCardParameters
 }

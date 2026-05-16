@@ -26,6 +26,20 @@ class SkyjoCardTest {
     }
 
     @Test
+    fun playerSwapCardScoreValueIsActionCardScore(){
+        val card = SkyjoCard.ActionCard.PlayerSwapCard(id = 152)
+
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
+    fun swapOwnCardsScoreValueIsActionCardScore(){
+        val card = SkyjoCard.ActionCard.SwapOwnCards(id = 153)
+
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
     fun numberCardDisplayLabelIsValue(){
         val card = SkyjoCard.NumberCard(id = 1, value = 12)
 
@@ -44,5 +58,19 @@ class SkyjoCardTest {
         val card = SkyjoCard.ActionCard.Defense(id = 151)
 
         assertEquals("Defense", card.displayLabel())
+    }
+
+    @Test
+    fun playerSwapCardDisplayLabelIsSwap(){
+        val card = SkyjoCard.ActionCard.PlayerSwapCard(id = 152)
+
+        assertEquals("Swap", card.displayLabel())
+    }
+
+    @Test
+    fun swapOwnCardsDisplayLabelIsSwapOwnCards(){
+        val card = SkyjoCard.ActionCard.SwapOwnCards(id = 153)
+
+        assertEquals("Swap Own Cards", card.displayLabel())
     }
 }
