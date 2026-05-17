@@ -42,6 +42,47 @@ sealed interface ActionCardEffect {
             state.copy(pendingExtraTurns = state.pendingExtraTurns + 1)
     }
 
+    data object SwapOwnCards : ActionCardEffect {
+        override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
+            val swapParameters = parameters as? ActionCardParameters.SwapOwnParameters
+                ?: throw InvalidMoveException("SwapOwnCards effect requires SwapOwnParameters parameters")
+
+            if (swapParameters.pos1 == swapParameters.pos2) {
+                throw InvalidMoveException("cannot swap the same board position")
+            }
+
+            val currentPlayer = state.players.getOrNull(state.currentPlayerIndex)
+                ?: throw InvalidMoveException("current player is not available")
+            val board = currentPlayer.board
+
+            val slot1 = board.slotAt(swapParameters.pos1)
+            if (slot1 !is BoardSlot.Occupied) {
+                throw InvalidMoveException("slot ${swapParameters.pos1} of current player is not occupied")
+            }
+
+            val slot2 = board.slotAt(swapParameters.pos2)
+            if (slot2 !is BoardSlot.Occupied) {
+                throw InvalidMoveException("slot ${swapParameters.pos2} of current player is not occupied")
+            }
+
+            val newSlots = board.slots.toMutableMap()
+            newSlots[swapParameters.pos1] = BoardSlot.Occupied(slot2.card, slot2.faceUp)
+            newSlots[swapParameters.pos2] = BoardSlot.Occupied(slot1.card, slot1.faceUp)
+
+            val updatedBoard = board.copy(slots = newSlots)
+            val cleanupResult = updatedBoard.clearCompletedLines()
+
+            val updatedPlayer = currentPlayer.copy(board = cleanupResult.board)
+            val updatedPlayers = state.players.mapIndexed { index, player ->
+                if (index == state.currentPlayerIndex) updatedPlayer else player
+            }
+
+            return state.copy(
+                players = updatedPlayers,
+                discardPile = state.discardPile.addAll(cleanupResult.removedCards),
+            )
+        }
+    }
     data object PlayerSwap : ActionCardEffect {
         override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
             require(parameters is ActionCardParameters.PlayerSwap) {
@@ -73,16 +114,23 @@ sealed interface ActionCardEffect {
             val updatedP2Board = p2.board.copy(
                 slots = p2.board.slots + (parameters.player2Position to slot2.copy(card = slot1.card)),
             )
+            val p1Cleanup = updatedP1Board.clearCompletedLines()
+            val p2Cleanup = updatedP2Board.clearCompletedLines()
 
             val updatedPlayers = state.players.map { player ->
                 when (player.id) {
-                    parameters.player1Id -> player.copy(board = updatedP1Board)
-                    parameters.player2Id -> player.copy(board = updatedP2Board)
+                    parameters.player1Id -> player.copy(board = p1Cleanup.board)
+                    parameters.player2Id -> player.copy(board = p2Cleanup.board)
                     else -> player
                 }
             }
 
-            return state.copy(players = updatedPlayers)
+            return state.copy(
+                players = updatedPlayers,
+                discardPile = state.discardPile
+                    .addAll(p1Cleanup.removedCards)
+                    .addAll(p2Cleanup.removedCards),
+            )
         }
     }
 }
@@ -91,6 +139,7 @@ fun SkyjoCard.ActionCard.toEffect(): ActionCardEffect =
     when (this) {
         is SkyjoCard.ActionCard.Enlightenment -> ActionCardEffect.Enlightenment
         is SkyjoCard.ActionCard.Defense -> ActionCardEffect.Defense
+        is SkyjoCard.ActionCard.SwapOwnCards -> ActionCardEffect.SwapOwnCards
         is SkyjoCard.ActionCard.Placeholder -> ActionCardEffect.Placeholder
         is SkyjoCard.ActionCard.PlayerSwapCard -> ActionCardEffect.PlayerSwap
     }

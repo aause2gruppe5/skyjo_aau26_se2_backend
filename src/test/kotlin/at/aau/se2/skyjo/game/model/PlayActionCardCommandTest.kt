@@ -50,4 +50,24 @@ class PlayActionCardCommandTest {
         assertEquals(BoardLineTargetType.COLUMN, parameters.targetType)
         assertEquals(2, parameters.lineIndex)
     }
+
+    @Test
+    fun `deserializes swap own parameters`() {
+        val json = """
+            {
+              "actionCardIndex": 2,
+              "parameters": {
+                "pos1": { "row": 0, "column": 0 },
+                "pos2": { "row": 0, "column": 1 }
+              }
+            }
+        """.trimIndent()
+
+        val command = mapper.readValue<PlayActionCardCommand>(json)
+        val parameters = command.parameters as ActionCardParameters.SwapOwnParameters
+
+        assertEquals(2, command.actionCardIndex)
+        assertEquals(BoardPosition(0, 0), parameters.pos1)
+        assertEquals(BoardPosition(0, 1), parameters.pos2)
+    }
 }
