@@ -112,6 +112,7 @@ class GameServiceTest {
                     ActionCardKind.DEFENSE,
                     ActionCardKind.SWAP_OWN_CARDS,
                     ActionCardKind.PLAYER_SWAP,
+                    ActionCardKind.DOUBLE_TURN,
                     ActionCardKind.PLACEHOLDER,
                 )
             },
@@ -381,6 +382,7 @@ class GameServiceTest {
                         SkyjoCard.ActionCard.Defense(id = 999),
                         SkyjoCard.ActionCard.PlayerSwapCard(id = 1000),
                         SkyjoCard.ActionCard.SwapOwnCards(id = 1001),
+                        SkyjoCard.ActionCard.DoubleTurn(id = 1002),
                     ),
                 )
             } else {
@@ -393,7 +395,12 @@ class GameServiceTest {
         val currentPlayer = update.players.first { it.playerId == state.currentPlayerId }
 
         assertEquals(
-            listOf(ActionCardKind.DEFENSE, ActionCardKind.PLAYER_SWAP, ActionCardKind.SWAP_OWN_CARDS),
+            listOf(
+                ActionCardKind.DEFENSE,
+                ActionCardKind.PLAYER_SWAP,
+                ActionCardKind.SWAP_OWN_CARDS,
+                ActionCardKind.DOUBLE_TURN,
+            ),
             currentPlayer.actionCards.map { it.kind },
         )
     }
