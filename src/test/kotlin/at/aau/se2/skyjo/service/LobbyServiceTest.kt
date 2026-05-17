@@ -141,4 +141,44 @@ class LobbyServiceTest {
     fun `isPlayerInLobby returns false for unknown player`() {
         assertFalse(service.isPlayerInLobby("unknown"))
     }
+
+    @Test
+    fun `all players leaving during game resets status to WAITING`() {
+        service.join("s1", "Alice")
+        service.join("s2", "Bob")
+        service.startGame("s1")
+
+        service.leave("s1")
+        val state = service.leave("s2")
+
+        assertEquals(LobbyStatus.WAITING, state.status)
+        assertEquals(0, state.players.size)
+    }
+
+    @Test
+    fun `new players can join after all players leave during game`() {
+        service.join("s1", "Alice")
+        service.join("s2", "Bob")
+        service.startGame("s1")
+        service.leave("s1")
+        service.leave("s2")
+
+        val state = service.join("s3", "Charlie")
+
+        assertEquals(1, state.players.size)
+        assertTrue(state.players[0].isHost)
+        assertEquals("Charlie", state.players[0].nickname)
+    }
+
+    @Test
+    fun `one player leaving during game keeps IN_GAME status`() {
+        service.join("s1", "Alice")
+        service.join("s2", "Bob")
+        service.startGame("s1")
+
+        val state = service.leave("s1")
+
+        assertEquals(LobbyStatus.IN_GAME, state.status)
+        assertEquals(1, state.players.size)
+    }
 }
