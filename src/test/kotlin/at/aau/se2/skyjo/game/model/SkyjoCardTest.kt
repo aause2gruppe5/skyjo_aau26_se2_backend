@@ -12,8 +12,15 @@ class SkyjoCardTest {
     }
 
     @Test
-    fun actionCardScoreValueIsZero(){
-        val card = SkyjoCard.ActionCard.Placeholder(id = 2)
+    fun actionCardScoreValueUsesActionCardScore(){
+        val card = SkyjoCard.ActionCard.Enlightenment(id = 2)
+
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
+    fun placeholderScoreValueUsesActionCardScore(){
+        val card = SkyjoCard.ActionCard.Placeholder(id = 151)
 
         assertEquals(ACTION_CARD_SCORE, card.scoreValue())
     }
@@ -33,6 +40,20 @@ class SkyjoCardTest {
     }
 
     @Test
+    fun swapOwnCardsScoreValueIsActionCardScore(){
+        val card = SkyjoCard.ActionCard.SwapOwnCards(id = 153)
+
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
+    fun doubleTurnCardScoreValueIsActionCardScore(){
+        val card = SkyjoCard.ActionCard.DoubleTurn(id = 154)
+
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
     fun numberCardDisplayLabelIsValue(){
         val card = SkyjoCard.NumberCard(id = 1, value = 12)
 
@@ -40,8 +61,15 @@ class SkyjoCardTest {
     }
 
     @Test
-    fun actionCardDisplayLabelIsAction(){
-        val card = SkyjoCard.ActionCard.Placeholder(id = 2)
+    fun enlightenmentDisplayLabelIsEnlightenment(){
+        val card = SkyjoCard.ActionCard.Enlightenment(id = 2)
+
+        assertEquals("Enlightenment", card.displayLabel())
+    }
+
+    @Test
+    fun placeholderDisplayLabelIsAction(){
+        val card = SkyjoCard.ActionCard.Placeholder(id = 151)
 
         assertEquals("Action", card.displayLabel())
     }
@@ -58,5 +86,19 @@ class SkyjoCardTest {
         val card = SkyjoCard.ActionCard.PlayerSwapCard(id = 152)
 
         assertEquals("Swap", card.displayLabel())
+    }
+
+    @Test
+    fun swapOwnCardsDisplayLabelIsSwapOwnCards(){
+        val card = SkyjoCard.ActionCard.SwapOwnCards(id = 153)
+
+        assertEquals("Swap Own Cards", card.displayLabel())
+    }
+
+    @Test
+    fun doubleTurnCardDisplayLabelIsDoubleTurn(){
+        val card = SkyjoCard.ActionCard.DoubleTurn(id = 154)
+
+        assertEquals("DoubleTurn", card.displayLabel())
     }
 }

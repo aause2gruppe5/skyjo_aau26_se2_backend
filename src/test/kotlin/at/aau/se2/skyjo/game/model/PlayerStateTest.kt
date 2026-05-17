@@ -16,8 +16,8 @@ class PlayerStateTest {
             id = "p1",
             board = board,
             actionCards = listOf(
-                SkyjoCard.ActionCard.Placeholder(151),
-                SkyjoCard.ActionCard.Placeholder(152),
+                SkyjoCard.ActionCard.Enlightenment(151),
+                SkyjoCard.ActionCard.Enlightenment(152),
             ),
         )
 
