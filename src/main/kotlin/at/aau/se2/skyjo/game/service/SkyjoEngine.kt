@@ -82,6 +82,7 @@ class SkyjoEngine {
             drawnCard = drawResult.card,
             drawSource = DrawSource.DECK,
             phase = GamePhase.AWAITING_REPLACEMENT,
+            actionCardResult = null,
         )
     }
 
@@ -93,6 +94,7 @@ class SkyjoEngine {
             drawnCard = drawResult.card,
             drawSource = DrawSource.DISCARD,
             phase = GamePhase.AWAITING_REPLACEMENT,
+            actionCardResult = null,
         )
     }
 
@@ -126,6 +128,7 @@ class SkyjoEngine {
                 visibleActionCards = visibleActionCards,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
         )
     }
@@ -149,6 +152,7 @@ class SkyjoEngine {
                 actionDrawPile = drawResult.remainingPile,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
         )
     }
@@ -186,6 +190,7 @@ class SkyjoEngine {
                 discardPile = updatedDiscardPile,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
         )
     }
@@ -220,6 +225,7 @@ class SkyjoEngine {
                 discardPile = updatedDiscardPile,
                 drawnCard = null,
                 drawSource = null,
+                actionCardResult = null,
             ),
         )
     }
@@ -319,6 +325,10 @@ class SkyjoEngine {
         parameters: ActionCardParameters = ActionCardParameters.None,
     ): GameState {
         val playableState = requireReadyForTurnAction(state, "play or discard an action card")
+        if (playableState.phase == GamePhase.FINAL_TURNS) {
+            throw InvalidMoveException("action cards cannot be played or discarded during final turns")
+        }
+
         val currentPlayer = playableState.currentPlayer()
         if (actionCardIndex !in currentPlayer.actionCards.indices) {
             throw InvalidMoveException("action card index $actionCardIndex is not available")
@@ -336,6 +346,7 @@ class SkyjoEngine {
             actionDiscardPile = playableState.actionDiscardPile.add(actionCard),
             drawnCard = null,
             drawSource = null,
+            actionCardResult = null,
         )
         val stateAfterAction = if (applyEffect) {
             actionCard.toEffect().apply(stateAfterDiscard, parameters)
@@ -354,7 +365,7 @@ class SkyjoEngine {
             val finalTurns = state.players.size - 1
             val nextPlayerIndex = nextPlayerIndex(state.currentPlayerIndex, state.players.size)
             if (finalTurns <= 0) {
-                return finishRound(state.copy(finisherPlayerId = currentPlayer.id, finalTurnsRemaining = 0))
+                return finishRoundAfterTurn(state.copy(finisherPlayerId = currentPlayer.id, finalTurnsRemaining = 0))
             }
 
             return state.copy(
@@ -365,10 +376,17 @@ class SkyjoEngine {
             )
         }
 
+        if (state.pendingExtraTurns > 0) {
+            return state.copy(
+                phase = if (state.finisherPlayerId == null) GamePhase.AWAITING_DRAW else GamePhase.FINAL_TURNS,
+                pendingExtraTurns = state.pendingExtraTurns - 1,
+            )
+        }
+
         if (state.finisherPlayerId != null) {
             val remainingFinalTurns = state.finalTurnsRemaining - 1
             if (remainingFinalTurns <= 0) {
-                return finishRound(state.copy(finalTurnsRemaining = 0))
+                return finishRoundAfterTurn(state.copy(finalTurnsRemaining = 0))
             }
 
             return state.copy(
@@ -382,6 +400,11 @@ class SkyjoEngine {
             currentPlayerIndex = nextPlayerIndex(state.currentPlayerIndex, state.players.size),
             phase = GamePhase.AWAITING_DRAW,
         )
+    }
+
+    private fun finishRoundAfterTurn(state: GameState): GameState {
+        val actionCardResult = state.actionCardResult
+        return finishRound(state).copy(actionCardResult = actionCardResult)
     }
 
     internal fun finishRound(state: GameState): GameState {
@@ -423,6 +446,7 @@ class SkyjoEngine {
             drawSource = null,
             finalTurnsRemaining = 0,
             roundResult = roundResult,
+            actionCardResult = null,
         )
     }
 

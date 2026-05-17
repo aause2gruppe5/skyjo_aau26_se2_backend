@@ -1,41 +1,57 @@
 package at.aau.se2.skyjo.controller
 
-import at.aau.se2.skyjo.model.MessageType
-import at.aau.se2.skyjo.model.PlayerMessage
-import at.aau.se2.skyjo.model.ServerMessage
-import at.aau.se2.skyjo.service.ConnectionService
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
+import at.aau.se2.skyjo.model.GameActionMessage
+import at.aau.se2.skyjo.service.GameService
 import org.slf4j.LoggerFactory
 import org.springframework.messaging.handler.annotation.MessageMapping
 import org.springframework.messaging.handler.annotation.Payload
-import org.springframework.messaging.handler.annotation.SendTo
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor
+import org.springframework.messaging.simp.SimpMessageSendingOperations
 import org.springframework.stereotype.Controller
 
 @Controller
-class GameController(private val connectionService: ConnectionService) {
+class GameController(
+    private val gameService: GameService,
+    private val messagingTemplate: SimpMessageSendingOperations,
+) {
 
     private val logger = LoggerFactory.getLogger(GameController::class.java)
 
-    @MessageMapping("/game.join")
-    @SendTo("/topic/public")
-    fun joinGame(
-        @Payload message: PlayerMessage,
-        headerAccessor: SimpMessageHeaderAccessor
-    ): ServerMessage {
-        val sessionId = headerAccessor.sessionId
-            ?: return ServerMessage(MessageType.ERROR, "Session not found")
-        connectionService.registerSession(sessionId, message.playerName)
-        logger.info("Player joined: ${message.playerName} (sessionId=$sessionId)")
-        return ServerMessage(MessageType.PLAYER_JOINED, "${message.playerName} joined.", message.playerName)
+    @MessageMapping("/game.action")
+    fun gameAction(
+        @Payload action: GameActionMessage,
+        headerAccessor: SimpMessageHeaderAccessor,
+    ) {
+        val playerId = headerAccessor.user?.name ?: return
+        runCatching {
+            val updatedState = gameService.processAction(playerId, action)
+            logger.info("Game action ${action.type} by $playerId")
+            messagingTemplate.convertAndSend("/topic/game", updatedState)
+        }.onFailure { e ->
+            messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
+        }
     }
 
-    @MessageMapping("/game.leave")
-    @SendTo("/topic/public")
-    fun leaveGame(headerAccessor: SimpMessageHeaderAccessor): ServerMessage {
-        val sessionId = headerAccessor.sessionId
-            ?: return ServerMessage(MessageType.ERROR, "Session not found")
-        val playerName = connectionService.removeSession(sessionId)
-        logger.info("Player left: $playerName (sessionId=$sessionId)")
-        return ServerMessage(MessageType.PLAYER_LEFT, "${playerName ?: "Unknown"} left.", playerName)
+    @MessageMapping("/game.action-card")
+    fun playActionCard(
+        @Payload command: PlayActionCardCommand,
+        headerAccessor: SimpMessageHeaderAccessor,
+    ) {
+        val playerId = headerAccessor.user?.name ?: return
+        runCatching {
+            val result = gameService.playActionCard(playerId, command)
+            logger.info("Action card ${command.actionCardIndex} played by $playerId")
+            messagingTemplate.convertAndSend("/topic/game", result.gameUpdate)
+            result.privateActionCardResults.forEach { (recipientPlayerId, actionCardResult) ->
+                messagingTemplate.convertAndSendToUser(
+                    recipientPlayerId,
+                    "/queue/action-card-results",
+                    actionCardResult,
+                )
+            }
+        }.onFailure { e ->
+            messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
+        }
     }
 }

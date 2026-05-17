@@ -11,7 +11,23 @@ sealed interface SkyjoCard {
     ) : PlayingCard
 
     sealed interface ActionCard : SkyjoCard {
+        data class Enlightenment(
+            override val id: Int,
+        ) : ActionCard
+
         data class Placeholder(
+            override val id: Int,
+        ) : ActionCard
+
+        data class Defense(
+            override val id: Int,
+        ) : ActionCard
+
+        data class SwapOwnCards(
+            override val id: Int,
+        ) : ActionCard
+
+        data class PlayerSwapCard(
             override val id: Int,
         ) : ActionCard
     }
@@ -29,5 +45,9 @@ fun SkyjoCard.ActionCard.scoreValue(): Int = ACTION_CARD_SCORE
 fun SkyjoCard.displayLabel(): String =
     when (this) {
         is SkyjoCard.NumberCard -> value.toString()
+        is SkyjoCard.ActionCard.Enlightenment -> "Enlightenment"
+        is SkyjoCard.ActionCard.Defense -> "Defense"
+        is SkyjoCard.ActionCard.SwapOwnCards -> "Swap Own Cards"
         is SkyjoCard.ActionCard.Placeholder -> "Action"
+        is SkyjoCard.ActionCard.PlayerSwapCard -> "Swap"
     }

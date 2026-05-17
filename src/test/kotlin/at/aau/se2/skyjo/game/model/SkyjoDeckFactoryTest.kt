@@ -32,6 +32,27 @@ class SkyjoDeckFactoryTest {
     }
 
     @Test
+    fun actionDrawPileContainsThreeDefenseCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(3, drawPile.cards.count { it is SkyjoCard.ActionCard.Defense })
+    }
+
+    @Test
+    fun actionDrawPileContainsThreePlayerSwapCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(3, drawPile.cards.count { it is SkyjoCard.ActionCard.PlayerSwapCard })
+    }
+
+    @Test
+    fun actionDrawPileContainsThreeSwapOwnCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(3, drawPile.cards.count { it is SkyjoCard.ActionCard.SwapOwnCards })
+    }
+
+    @Test
     fun cardsHaveUniqueId(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
         val actionDrawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
@@ -54,6 +75,14 @@ class SkyjoDeckFactoryTest {
 
         assertEquals(21, drawPile.cards.size)
         assertTrue(drawPile.cards.all { it.id in 151..171 })
+    }
+
+    @Test
+    fun actionDrawPileContainsThreeEnlightenmentCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(3, drawPile.cards.count { it is SkyjoCard.ActionCard.Enlightenment })
+        assertEquals(9, drawPile.cards.count { it is SkyjoCard.ActionCard.Placeholder })
     }
 
     @Test

@@ -12,8 +12,36 @@ class SkyjoCardTest {
     }
 
     @Test
-    fun actionCardScoreValueIsZero(){
-        val card = SkyjoCard.ActionCard.Placeholder(id = 2)
+    fun actionCardScoreValueUsesActionCardScore(){
+        val card = SkyjoCard.ActionCard.Enlightenment(id = 2)
+
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
+    fun placeholderScoreValueUsesActionCardScore(){
+        val card = SkyjoCard.ActionCard.Placeholder(id = 151)
+
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
+    fun defenseCardScoreValueIsActionCardScore(){
+        val card = SkyjoCard.ActionCard.Defense(id = 151)
+
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
+    fun playerSwapCardScoreValueIsActionCardScore(){
+        val card = SkyjoCard.ActionCard.PlayerSwapCard(id = 152)
+
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
+    fun swapOwnCardsScoreValueIsActionCardScore(){
+        val card = SkyjoCard.ActionCard.SwapOwnCards(id = 153)
 
         assertEquals(ACTION_CARD_SCORE, card.scoreValue())
     }
@@ -26,9 +54,37 @@ class SkyjoCardTest {
     }
 
     @Test
-    fun actionCardDisplayLabelIsAction(){
-        val card = SkyjoCard.ActionCard.Placeholder(id = 2)
+    fun enlightenmentDisplayLabelIsEnlightenment(){
+        val card = SkyjoCard.ActionCard.Enlightenment(id = 2)
+
+        assertEquals("Enlightenment", card.displayLabel())
+    }
+
+    @Test
+    fun placeholderDisplayLabelIsAction(){
+        val card = SkyjoCard.ActionCard.Placeholder(id = 151)
 
         assertEquals("Action", card.displayLabel())
+    }
+
+    @Test
+    fun defenseCardDisplayLabelIsDefense(){
+        val card = SkyjoCard.ActionCard.Defense(id = 151)
+
+        assertEquals("Defense", card.displayLabel())
+    }
+
+    @Test
+    fun playerSwapCardDisplayLabelIsSwap(){
+        val card = SkyjoCard.ActionCard.PlayerSwapCard(id = 152)
+
+        assertEquals("Swap", card.displayLabel())
+    }
+
+    @Test
+    fun swapOwnCardsDisplayLabelIsSwapOwnCards(){
+        val card = SkyjoCard.ActionCard.SwapOwnCards(id = 153)
+
+        assertEquals("Swap Own Cards", card.displayLabel())
     }
 }

@@ -1,20 +1,356 @@
 package at.aau.se2.skyjo.game.model
 
-import org.junit.jupiter.api.Assertions.assertSame
+import at.aau.se2.skyjo.game.error.InvalidMoveException
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 class ActionCardEffectTest {
     @Test
-    fun placeholderActionCardMapsToPlaceholderEffect(){
+    fun placeholderActionCardMapsToPlaceholderEffect() {
         val card = SkyjoCard.ActionCard.Placeholder(id = 1)
 
         assertSame(ActionCardEffect.Placeholder, card.toEffect())
     }
 
     @Test
-    fun placeholderActionCardEffectKeepsStateUnchanged(){
+    fun defenseActionCardMapsToDefenseEffect() {
+        val card = SkyjoCard.ActionCard.Defense(id = 151)
+
+        assertSame(ActionCardEffect.Defense, card.toEffect())
+    }
+
+    @Test
+    fun swapOwnCardsActionCardMapsToSwapOwnCardsEffect() {
+        val card = SkyjoCard.ActionCard.SwapOwnCards(id = 200)
+
+        assertSame(ActionCardEffect.SwapOwnCards, card.toEffect())
+    }
+
+    @Test
+    fun playerSwapCardMapsToPlayerSwapEffect() {
+        val card = SkyjoCard.ActionCard.PlayerSwapCard(id = 152)
+
+        assertSame(ActionCardEffect.PlayerSwap, card.toEffect())
+    }
+
+    @Test
+    fun placeholderActionCardEffectKeepsStateUnchanged() {
         val state = GameState()
 
         assertSame(state, ActionCardEffect.Placeholder.apply(state, ActionCardParameters.None))
+    }
+
+    @Test
+    fun enlightenmentActionCardMapsToEnlightenmentEffect() {
+        val card = SkyjoCard.ActionCard.Enlightenment(id = 1)
+
+        assertSame(ActionCardEffect.Enlightenment, card.toEffect())
+    }
+
+    @Test
+    fun defenseActionCardEffectAddsPendingExtraTurn() {
+        val state = GameState(pendingExtraTurns = 1)
+
+        val result = ActionCardEffect.Defense.apply(state, ActionCardParameters.None)
+
+        assertSame(state.players, result.players)
+        assertEquals(2, result.pendingExtraTurns)
+    }
+
+    @Test
+    fun swapOwnCardsEffectSwapsTwoCardsAndPreservesFaceUpStatus() {
+        val player1Id = "player1"
+        val card1 = SkyjoCard.NumberCard(1, 1)
+        val card2 = SkyjoCard.NumberCard(2, 2)
+        val card3 = SkyjoCard.NumberCard(3, 3)
+        val card4 = SkyjoCard.NumberCard(4, 4)
+
+        val initialCards = listOf(card1, card2, card3, card4) + List(8) { SkyjoCard.NumberCard(it + 5, 5) }
+        // pos1 (0,0) wird hier als offen (faceUp=true) definiert, pos2 (0,1) bleibt verdeckt (faceUp=false)
+        val playerBoard = PlayerBoard.fromCards(initialCards, setOf(BoardPosition(0, 0), BoardPosition(1, 1)))
+        val playerState = PlayerState(player1Id, playerBoard)
+        val state = GameState(players = listOf(playerState))
+
+        val pos1 = BoardPosition(0, 0)
+        val pos2 = BoardPosition(0, 1)
+
+        // Keine faceUp-Parameter mehr nötig
+        val parameters = ActionCardParameters.SwapOwnParameters(pos1, pos2)
+        val result = ActionCardEffect.SwapOwnCards.apply(state, parameters)
+
+        val updatedPlayerBoard = result.players[0].board
+
+        // Nach dem Tausch wandert Karte 2 verdeckt auf pos1 und Karte 1 offen auf pos2
+        assertEquals(BoardSlot.Occupied(card2, false), updatedPlayerBoard.slotAt(pos1))
+        assertEquals(BoardSlot.Occupied(card1, true), updatedPlayerBoard.slotAt(pos2))
+    }
+
+    @Test
+    fun swapOwnCardsEffectRejectsMissingParameters() {
+        val exception = assertThrows(InvalidMoveException::class.java) {
+            ActionCardEffect.SwapOwnCards.apply(GameState(), ActionCardParameters.None)
+        }
+
+        assertTrue(exception.message!!.contains("SwapOwnCards effect requires SwapOwnParameters parameters"))
+    }
+
+    @Test
+    fun swapOwnCardsEffectRejectsClearedSlot() {
+        val pos1 = BoardPosition(0, 0)
+        val pos2 = BoardPosition(0, 1)
+        val state = GameState(
+            players = listOf(
+                PlayerState(id = "p1", board = buildBoard(mapOf(pos1 to BoardSlot.Cleared))),
+            ),
+        )
+
+        val exception = assertThrows(InvalidMoveException::class.java) {
+            ActionCardEffect.SwapOwnCards.apply(
+                state,
+                ActionCardParameters.SwapOwnParameters(
+                    pos1 = pos1,
+                    pos2 = pos2,
+                ),
+            )
+        }
+
+        assertTrue(exception.message!!.contains("slot $pos1 of current player is not occupied"))
+    }
+
+    // --- NEUER TEST FÜR P2 ---
+    @Test
+    fun swapOwnCardsEffectRejectsSamePosition() {
+        val pos = BoardPosition(0, 0)
+        val state = GameState(
+            players = listOf(
+                PlayerState(
+                    id = "p1",
+                    board = buildBoard(mapOf(pos to BoardSlot.Occupied(SkyjoCard.NumberCard(1, 1), faceUp = true))),
+                ),
+            ),
+        )
+
+        val exception = assertThrows(InvalidMoveException::class.java) {
+            ActionCardEffect.SwapOwnCards.apply(
+                state,
+                ActionCardParameters.SwapOwnParameters(pos, pos)
+            )
+        }
+
+        assertTrue(exception.message!!.contains("cannot swap the same board position"))
+    }
+
+    @Test
+    fun playerSwapActionCardEffectSwapsCardsBetweenPlayers() {
+        val card1 = SkyjoCard.NumberCard(id = 10, value = 3)
+        val card2 = SkyjoCard.NumberCard(id = 20, value = 7)
+        val pos1 = BoardPosition(0, 0)
+        val pos2 = BoardPosition(1, 1)
+        val state = GameState(
+            players = listOf(
+                PlayerState(id = "p1", board = buildBoard(mapOf(pos1 to BoardSlot.Occupied(card1, faceUp = true)))),
+                PlayerState(id = "p2", board = buildBoard(mapOf(pos2 to BoardSlot.Occupied(card2, faceUp = false)))),
+            ),
+        )
+
+        val result = ActionCardEffect.PlayerSwap.apply(
+            state,
+            ActionCardParameters.PlayerSwap(
+                player1Id = "p1",
+                player1Position = pos1,
+                player2Id = "p2",
+                player2Position = pos2,
+            ),
+        )
+
+        val p1Slot = result.players.first { it.id == "p1" }.board.slotAt(pos1) as BoardSlot.Occupied
+        val p2Slot = result.players.first { it.id == "p2" }.board.slotAt(pos2) as BoardSlot.Occupied
+        assertEquals(card2, p1Slot.card)
+        assertEquals(card1, p2Slot.card)
+        assertTrue(p1Slot.faceUp)
+        assertFalse(p2Slot.faceUp)
+    }
+
+    @Test
+    fun playerSwapActionCardEffectRejectsSamePlayer() {
+        val pos = BoardPosition(0, 0)
+        val state = GameState(
+            players = listOf(
+                PlayerState(
+                    id = "p1",
+                    board = buildBoard(mapOf(pos to BoardSlot.Occupied(SkyjoCard.NumberCard(1, 1), faceUp = true))),
+                ),
+            ),
+        )
+
+        assertThrows(InvalidMoveException::class.java) {
+            ActionCardEffect.PlayerSwap.apply(
+                state,
+                ActionCardParameters.PlayerSwap("p1", pos, "p1", BoardPosition(0, 1)),
+            )
+        }
+    }
+
+    @Test
+    fun playerSwapActionCardEffectRejectsMissingParameters() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ActionCardEffect.PlayerSwap.apply(GameState(), ActionCardParameters.None)
+        }
+    }
+
+    @Test
+    fun playerSwapActionCardEffectRejectsUnknownFirstPlayer() {
+        val pos = BoardPosition(0, 0)
+        val state = GameState(
+            players = listOf(
+                PlayerState(
+                    id = "p2",
+                    board = buildBoard(mapOf(pos to BoardSlot.Occupied(SkyjoCard.NumberCard(1, 1), faceUp = true))),
+                ),
+            ),
+        )
+
+        val exception = assertThrows(InvalidMoveException::class.java) {
+            ActionCardEffect.PlayerSwap.apply(
+                state,
+                ActionCardParameters.PlayerSwap("p1", pos, "p2", pos),
+            )
+        }
+
+        assertTrue(exception.message!!.contains("player p1 not found"))
+    }
+
+    @Test
+    fun playerSwapActionCardEffectRejectsUnknownSecondPlayer() {
+        val pos = BoardPosition(0, 0)
+        val state = GameState(
+            players = listOf(
+                PlayerState(
+                    id = "p1",
+                    board = buildBoard(mapOf(pos to BoardSlot.Occupied(SkyjoCard.NumberCard(1, 1), faceUp = true))),
+                ),
+            ),
+        )
+
+        val exception = assertThrows(InvalidMoveException::class.java) {
+            ActionCardEffect.PlayerSwap.apply(
+                state,
+                ActionCardParameters.PlayerSwap("p1", pos, "p2", pos),
+            )
+        }
+
+        assertTrue(exception.message!!.contains("player p2 not found"))
+    }
+
+    @Test
+    fun playerSwapActionCardEffectRejectsClearedFirstSlot() {
+        val pos1 = BoardPosition(0, 0)
+        val pos2 = BoardPosition(0, 1)
+        val state = GameState(
+            players = listOf(
+                PlayerState(id = "p1", board = buildBoard(mapOf(pos1 to BoardSlot.Cleared))),
+                PlayerState(id = "p2", board = buildBoard(mapOf(pos2 to BoardSlot.Occupied(SkyjoCard.NumberCard(2, 2), faceUp = true)))),
+            ),
+        )
+
+        val exception = assertThrows(InvalidMoveException::class.java) {
+            ActionCardEffect.PlayerSwap.apply(
+                state,
+                ActionCardParameters.PlayerSwap("p1", pos1, "p2", pos2),
+            )
+        }
+
+        assertTrue(exception.message!!.contains("slot $pos1 of player p1 is not occupied"))
+    }
+
+    @Test
+    fun playerSwapActionCardEffectRejectsClearedSecondSlot() {
+        val pos1 = BoardPosition(0, 0)
+        val pos2 = BoardPosition(0, 1)
+        val state = GameState(
+            players = listOf(
+                PlayerState(id = "p1", board = buildBoard(mapOf(pos1 to BoardSlot.Occupied(SkyjoCard.NumberCard(1, 1), faceUp = true)))),
+                PlayerState(id = "p2", board = buildBoard(mapOf(pos2 to BoardSlot.Cleared))),
+            ),
+        )
+
+        val exception = assertThrows(InvalidMoveException::class.java) {
+            ActionCardEffect.PlayerSwap.apply(
+                state,
+                ActionCardParameters.PlayerSwap("p1", pos1, "p2", pos2),
+            )
+        }
+
+        assertTrue(exception.message!!.contains("slot $pos2 of player p2 is not occupied"))
+    }
+
+    @Test
+    fun playerSwapActionCardEffectLeavesOtherPlayersUnchanged() {
+        val card1 = SkyjoCard.NumberCard(id = 10, value = 3)
+        val card2 = SkyjoCard.NumberCard(id = 20, value = 7)
+        val otherBoard = buildBoard()
+        val pos1 = BoardPosition(0, 0)
+        val pos2 = BoardPosition(1, 1)
+        val state = GameState(
+            players = listOf(
+                PlayerState(id = "p1", board = buildBoard(mapOf(pos1 to BoardSlot.Occupied(card1, faceUp = true)))),
+                PlayerState(id = "p2", board = buildBoard(mapOf(pos2 to BoardSlot.Occupied(card2, faceUp = false)))),
+                PlayerState(id = "p3", board = otherBoard),
+            ),
+        )
+
+        val result = ActionCardEffect.PlayerSwap.apply(
+            state,
+            ActionCardParameters.PlayerSwap("p1", pos1, "p2", pos2),
+        )
+
+        assertSame(otherBoard, result.players.first { it.id == "p3" }.board)
+    }
+
+    @Test
+    fun playerSwapActionCardEffectClearsCompletedLinesAfterSwap() {
+        val p1SwapPosition = BoardPosition(0, 0)
+        val p2SwapPosition = BoardPosition(0, 0)
+        val p1Board = buildBoard(
+            mapOf(
+                BoardPosition(0, 0) to BoardSlot.Occupied(SkyjoCard.NumberCard(10, 1), faceUp = true),
+                BoardPosition(0, 1) to BoardSlot.Occupied(SkyjoCard.NumberCard(11, 7), faceUp = true),
+                BoardPosition(0, 2) to BoardSlot.Occupied(SkyjoCard.NumberCard(12, 7), faceUp = true),
+                BoardPosition(0, 3) to BoardSlot.Occupied(SkyjoCard.NumberCard(13, 7), faceUp = true),
+            ),
+        )
+        val p2Board = buildBoard(
+            mapOf(
+                p2SwapPosition to BoardSlot.Occupied(SkyjoCard.NumberCard(20, 7), faceUp = true),
+            ),
+        )
+        val state = GameState(
+            players = listOf(
+                PlayerState(id = "p1", board = p1Board),
+                PlayerState(id = "p2", board = p2Board),
+            ),
+        )
+
+        val result = ActionCardEffect.PlayerSwap.apply(
+            state,
+            ActionCardParameters.PlayerSwap("p1", p1SwapPosition, "p2", p2SwapPosition),
+        )
+
+        val updatedP1Board = result.players.first { it.id == "p1" }.board
+        BoardLayout.HORIZONTAL_LINES[0].forEach { position ->
+            assertEquals(BoardSlot.Cleared, updatedP1Board.slotAt(position))
+        }
+        assertEquals(listOf(7, 7, 7, 7), result.discardPile.cards.map { it.scoreValue() })
+    }
+
+    private fun buildBoard(overrides: Map<BoardPosition, BoardSlot> = emptyMap()): PlayerBoard {
+        var idCounter = 1
+        val slots = BoardLayout.POSITIONS.associateWith { pos ->
+            overrides[pos] ?: BoardSlot.Occupied(
+                card = SkyjoCard.NumberCard(id = idCounter++, value = 0),
+                faceUp = false,
+            )
+        }
+        return PlayerBoard(slots)
     }
 }

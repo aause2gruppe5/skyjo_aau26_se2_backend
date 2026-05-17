@@ -1,79 +1,129 @@
 package at.aau.se2.skyjo.controller
 
-import at.aau.se2.skyjo.model.MessageType
-import at.aau.se2.skyjo.model.PlayerMessage
-import at.aau.se2.skyjo.service.ConnectionService
-import org.junit.jupiter.api.Assertions.*
+import at.aau.se2.skyjo.game.model.DrawSource
+import at.aau.se2.skyjo.game.model.GamePhase
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
+import at.aau.se2.skyjo.game.model.BoardLineTargetType
+import at.aau.se2.skyjo.model.ActionCardResultMessage
+import at.aau.se2.skyjo.model.ActionCardResultType
+import at.aau.se2.skyjo.model.ActionType
+import at.aau.se2.skyjo.model.GameActionMessage
+import at.aau.se2.skyjo.model.GameUpdateMessage
+import at.aau.se2.skyjo.model.PlayActionCardMessageResult
+import at.aau.se2.skyjo.service.GameService
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor
+import org.springframework.messaging.simp.SimpMessageSendingOperations
+import java.security.Principal
 
 class GameControllerTest {
 
-    private val connectionService: ConnectionService = mock()
-    private val controller = GameController(connectionService)
+    private val gameService: GameService = mock()
+    private val messagingTemplate: SimpMessageSendingOperations = mock()
+    private val controller = GameController(gameService, messagingTemplate)
+
+    private fun headerWithUser(userId: String): SimpMessageHeaderAccessor {
+        val header = SimpMessageHeaderAccessor.create()
+        header.user = Principal { userId }
+        return header
+    }
+
+    private fun stubGameUpdate(): GameUpdateMessage = GameUpdateMessage(
+        phase = GamePhase.AWAITING_DRAW,
+        currentPlayerId = "p1",
+        players = emptyList(),
+        discardTopCard = null,
+        drawnCard = null,
+        roundResult = null,
+        roundNumber = 1,
+        totalScores = emptyList(),
+        gameOver = false,
+    )
 
     @Test
-    fun `joinGame registers player and returns PLAYER_JOINED`() {
-        val headerAccessor = SimpMessageHeaderAccessor.create()
-        headerAccessor.sessionId = "s1"
+    fun `gameAction broadcasts updated state to topic game`() {
+        val update = stubGameUpdate()
+        whenever(gameService.processAction(any(), any())).thenReturn(update)
+        val action = GameActionMessage(ActionType.DRAW, source = DrawSource.DECK)
 
-        val message = PlayerMessage("Alice")
+        controller.gameAction(action, headerWithUser("p1"))
 
-        val result = controller.joinGame(message, headerAccessor)
-
-        verify(connectionService).registerSession("s1", "Alice")
-        assertEquals(MessageType.PLAYER_JOINED, result.type)
-        assertEquals("Alice joined.", result.content)
-        assertEquals("Alice", result.playerName)
+        verify(messagingTemplate).convertAndSend("/topic/game", update)
     }
 
     @Test
-    fun `joinGame returns ERROR if sessionId is null`() {
-        val headerAccessor = SimpMessageHeaderAccessor.create()
-        val message = PlayerMessage("Alice")
+    fun `gameAction sends error to player when processAction throws`() {
+        whenever(gameService.processAction(any(), any())).thenThrow(IllegalStateException("not your turn"))
+        val action = GameActionMessage(ActionType.DRAW, source = DrawSource.DECK)
 
-        val result = controller.joinGame(message, headerAccessor)
+        controller.gameAction(action, headerWithUser("p1"))
 
-        assertEquals(MessageType.ERROR, result.type)
+        verify(messagingTemplate).convertAndSendToUser(eq("p1"), eq("/queue/errors"), any())
     }
 
     @Test
-    fun `leaveGame removes session and returns PLAYER_LEFT`() {
-        val headerAccessor = SimpMessageHeaderAccessor.create()
-        headerAccessor.sessionId = "s1"
+    fun `gameAction does nothing when user principal is missing`() {
+        val header = SimpMessageHeaderAccessor.create()
+        val action = GameActionMessage(ActionType.DRAW, source = DrawSource.DECK)
 
-        org.mockito.kotlin.whenever(connectionService.removeSession("s1"))
-            .thenReturn("Alice")
+        controller.gameAction(action, header)
 
-        val result = controller.leaveGame(headerAccessor)
-
-        verify(connectionService).removeSession("s1")
-        assertEquals(MessageType.PLAYER_LEFT, result.type)
-        assertEquals("Alice left.", result.content)
-        assertEquals("Alice", result.playerName)
+        verify(gameService, never()).processAction(any(), any())
+        verify(messagingTemplate, never()).convertAndSend(any<String>(), any<Any>())
     }
+
     @Test
-    fun `leaveGame returns Unknown when session is not found`() {
-        val headerAccessor = SimpMessageHeaderAccessor.create()
-        headerAccessor.sessionId = "s1"
+    fun `playActionCard broadcasts public update and sends private result only to acting user`() {
+        val update = stubGameUpdate()
+        val privateResult = ActionCardResultMessage(
+            type = ActionCardResultType.ENLIGHTENMENT,
+            actionCardIndex = 0,
+            targetPlayerId = "p1",
+            targetType = BoardLineTargetType.ROW,
+            lineIndex = 0,
+            inspectedValues = listOf(1, 2, 3, 4),
+            inspectedCards = emptyList(),
+        )
+        val command = PlayActionCardCommand(actionCardIndex = 0)
+        whenever(gameService.playActionCard(any(), any())).thenReturn(
+            PlayActionCardMessageResult(
+                gameUpdate = update,
+                privateActionCardResults = mapOf("p1" to privateResult),
+            ),
+        )
 
-        org.mockito.kotlin.whenever(connectionService.removeSession("s1"))
-            .thenReturn(null)
+        controller.playActionCard(command, headerWithUser("p1"))
 
-        val result = controller.leaveGame(headerAccessor)
-
-        assertEquals(MessageType.PLAYER_LEFT, result.type)
-        assertEquals("Unknown left.", result.content)
-        assertNull(result.playerName)
+        verify(messagingTemplate).convertAndSend("/topic/game", update)
+        verify(messagingTemplate).convertAndSendToUser("p1", "/queue/action-card-results", privateResult)
+        verify(messagingTemplate, never()).convertAndSendToUser(eq("p2"), eq("/queue/action-card-results"), any())
     }
+
     @Test
-    fun `leaveGame returns ERROR if sessionId is null`() {
-        val headerAccessor = SimpMessageHeaderAccessor.create()
+    fun `playActionCard sends error to player when service throws`() {
+        whenever(gameService.playActionCard(any(), any())).thenThrow(IllegalStateException("not your turn"))
+        val command = PlayActionCardCommand(actionCardIndex = 0)
 
-        val result = controller.leaveGame(headerAccessor)
+        controller.playActionCard(command, headerWithUser("p1"))
 
-        assertEquals(MessageType.ERROR, result.type)
+        verify(messagingTemplate).convertAndSendToUser(eq("p1"), eq("/queue/errors"), any())
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/game"), any<Any>())
+    }
+
+    @Test
+    fun `playActionCard does nothing when user principal is missing`() {
+        val header = SimpMessageHeaderAccessor.create()
+        val command = PlayActionCardCommand(actionCardIndex = 0)
+
+        controller.playActionCard(command, header)
+
+        verify(gameService, never()).playActionCard(any(), any())
+        verify(messagingTemplate, never()).convertAndSend(any<String>(), any<Any>())
     }
 }
