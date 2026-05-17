@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import at.aau.se2.skyjo.game.error.InvalidMoveException
 
 class GameServiceTest {
 
@@ -473,6 +474,99 @@ class GameServiceTest {
     }
 
     @Test
+    fun `processAction PLAY_ACTION_CARD own swap requires first row`() {
+        assertSwapOwnMissingFieldFails(
+            action = validSwapOwnAction().copy(targetPlayer1Row = null),
+            expectedMessage = "targetPlayer1Row required",
+        )
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD own swap requires first column`() {
+        assertSwapOwnMissingFieldFails(
+            action = validSwapOwnAction().copy(targetPlayer1Col = null),
+            expectedMessage = "targetPlayer1Col required",
+        )
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD own swap requires second row`() {
+        assertSwapOwnMissingFieldFails(
+            action = validSwapOwnAction().copy(targetPlayer2Row = null),
+            expectedMessage = "targetPlayer2Row required",
+        )
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD own swap requires second column`() {
+        assertSwapOwnMissingFieldFails(
+            action = validSwapOwnAction().copy(targetPlayer2Col = null),
+            expectedMessage = "targetPlayer2Col required",
+        )
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD own swap rejects same position and keeps action card`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val actionCard = SkyjoCard.ActionCard.SwapOwnCards(id = 1001)
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(actionCard))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val exception = assertThrows<InvalidMoveException> {
+            service.processAction(
+                currentPlayerId,
+                GameActionMessage(
+                    type = ActionType.PLAY_ACTION_CARD,
+                    actionCardIndex = 0,
+                    targetPlayer1Row = 0,
+                    targetPlayer1Col = 0,
+                    targetPlayer2Row = 0,
+                    targetPlayer2Col = 0,
+                ),
+            )
+        }
+
+        assertTrue(exception.message!!.contains("cannot swap the same board position"))
+        val unchangedState = getInternalGameState(service)
+        assertEquals(listOf(actionCard), unchangedState.currentPlayer().actionCards)
+        assertEquals(GamePhase.AWAITING_DRAW, unchangedState.phase)
+    }
+
+    @Test
+    fun `processAction PLAY_ACTION_CARD own swap rejects unavailable board position and keeps action card`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val actionCard = SkyjoCard.ActionCard.SwapOwnCards(id = 1001)
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(actionCard))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val exception = assertThrows<InvalidMoveException> {
+            service.processAction(
+                currentPlayerId,
+                validSwapOwnAction().copy(targetPlayer1Row = 99),
+            )
+        }
+
+        assertTrue(exception.message!!.contains("row must be between"))
+        assertEquals(listOf(actionCard), getInternalGameState(service).currentPlayer().actionCards)
+    }
+
+    @Test
     fun `processAction PLAY_ACTION_CARD rejects unavailable action card index`() {
         service.startGame(players)
         val state = getInternalGameState(service)
@@ -854,4 +948,38 @@ private fun playerBoardWithValues(
         )
     }
     return PlayerBoard(slots)
+}
+
+private fun validSwapOwnAction() = GameActionMessage(
+    type = ActionType.PLAY_ACTION_CARD,
+    actionCardIndex = 0,
+    targetPlayer1Row = 0,
+    targetPlayer1Col = 0,
+    targetPlayer2Row = 0,
+    targetPlayer2Col = 1,
+)
+
+private fun assertSwapOwnMissingFieldFails(
+    action: GameActionMessage,
+    expectedMessage: String,
+) {
+    service.startGame(players)
+    val state = getInternalGameState(service)
+    val currentPlayerId = state.currentPlayerId!!
+    val actionCard = SkyjoCard.ActionCard.SwapOwnCards(id = 1001)
+    val updatedPlayers = state.players.mapIndexed { index, player ->
+        if (index == state.currentPlayerIndex) {
+            player.copy(actionCards = listOf(actionCard))
+        } else {
+            player
+        }
+    }
+    setInternalGameState(service, state.copy(players = updatedPlayers))
+
+    val exception = assertThrows<InvalidMoveException> {
+        service.processAction(currentPlayerId, action)
+    }
+
+    assertTrue(exception.message!!.contains(expectedMessage))
+    assertEquals(listOf(actionCard), getInternalGameState(service).currentPlayer().actionCards)
 }

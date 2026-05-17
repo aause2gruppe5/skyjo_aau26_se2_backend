@@ -87,9 +87,11 @@ class ActionCardEffectTest {
 
     @Test
     fun swapOwnCardsEffectRejectsMissingParameters() {
-        assertThrows(IllegalArgumentException::class.java) {
+        val exception = assertThrows(InvalidMoveException::class.java) {
             ActionCardEffect.SwapOwnCards.apply(GameState(), ActionCardParameters.None)
         }
+
+        assertTrue(exception.message!!.contains("SwapOwnCards effect requires SwapOwnParameters parameters"))
     }
 
     @Test
