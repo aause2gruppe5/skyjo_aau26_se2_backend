@@ -15,6 +15,7 @@ object SkyjoDeckFactory {
     private const val ACTION_CARD_COUNT = 21
     private const val DEFENSE_CARD_COUNT = 3
     private const val PLAYER_SWAP_CARD_COUNT = 3
+    private const val DOUBLE_TURN_CARD_COUNT = 3
 
     fun createShuffledDrawPile(seed: Long? = null): DrawPile {
         val random = seed?.let { Random(it) } ?: Random.Default
@@ -34,6 +35,7 @@ object SkyjoDeckFactory {
             when {
                 index < DEFENSE_CARD_COUNT -> SkyjoCard.ActionCard.Defense(id)
                 index < DEFENSE_CARD_COUNT + PLAYER_SWAP_CARD_COUNT -> SkyjoCard.ActionCard.PlayerSwapCard(id)
+                index < DEFENSE_CARD_COUNT + PLAYER_SWAP_CARD_COUNT + DOUBLE_TURN_CARD_COUNT -> SkyjoCard.ActionCard.DoubleTurn(id)
                 else -> SkyjoCard.ActionCard.Placeholder(id)
             }
         }.shuffled(random)

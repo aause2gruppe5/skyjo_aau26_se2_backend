@@ -123,6 +123,7 @@ class GameService(
                 val parameters = when (actionCard) {
                     is SkyjoCard.ActionCard.PlayerSwapCard -> action.toPlayerSwapParameters()
                     is SkyjoCard.ActionCard.Defense,
+                    is SkyjoCard.ActionCard.DoubleTurn,
                     is SkyjoCard.ActionCard.Placeholder -> ActionCardParameters.None
                 }
 
@@ -236,6 +237,7 @@ class GameService(
             kind = when (card) {
                 is SkyjoCard.ActionCard.Placeholder -> ActionCardKind.PLACEHOLDER
                 is SkyjoCard.ActionCard.Defense -> ActionCardKind.DEFENSE
+                is SkyjoCard.ActionCard.DoubleTurn -> ActionCardKind.DOUBLE_TURN
                 is SkyjoCard.ActionCard.PlayerSwapCard -> ActionCardKind.PLAYER_SWAP
             },
         )
