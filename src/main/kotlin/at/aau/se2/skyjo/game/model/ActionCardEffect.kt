@@ -44,10 +44,10 @@ sealed interface ActionCardEffect {
 
     data object SwapOwnCards : ActionCardEffect {
         override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
-            require(parameters is ActionCardParameters.SwapOwnParameters) {
-                "SwapOwnCards effect requires SwapOwnParameters parameters"
-            }
-            if (parameters.pos1 == parameters.pos2) {
+            val swapParameters = parameters as? ActionCardParameters.SwapOwnParameters
+                ?: throw InvalidMoveException("SwapOwnCards effect requires SwapOwnParameters parameters")
+
+            if (swapParameters.pos1 == swapParameters.pos2) {
                 throw InvalidMoveException("cannot swap the same board position")
             }
 
@@ -55,20 +55,19 @@ sealed interface ActionCardEffect {
                 ?: throw InvalidMoveException("current player is not available")
             val board = currentPlayer.board
 
-            val slot1 = board.slotAt(parameters.pos1)
+            val slot1 = board.slotAt(swapParameters.pos1)
             if (slot1 !is BoardSlot.Occupied) {
-                throw InvalidMoveException("slot ${parameters.pos1} of current player is not occupied")
+                throw InvalidMoveException("slot ${swapParameters.pos1} of current player is not occupied")
             }
 
-            val slot2 = board.slotAt(parameters.pos2)
+            val slot2 = board.slotAt(swapParameters.pos2)
             if (slot2 !is BoardSlot.Occupied) {
-                throw InvalidMoveException("slot ${parameters.pos2} of current player is not occupied")
+                throw InvalidMoveException("slot ${swapParameters.pos2} of current player is not occupied")
             }
 
             val newSlots = board.slots.toMutableMap()
-            // Hier greifen wir nun auf die reine Server-Wahrheit (slot1.faceUp und slot2.faceUp) zu
-            newSlots[parameters.pos1] = BoardSlot.Occupied(slot2.card, slot2.faceUp)
-            newSlots[parameters.pos2] = BoardSlot.Occupied(slot1.card, slot1.faceUp)
+            newSlots[swapParameters.pos1] = BoardSlot.Occupied(slot2.card, slot2.faceUp)
+            newSlots[swapParameters.pos2] = BoardSlot.Occupied(slot1.card, slot1.faceUp)
 
             val updatedBoard = board.copy(slots = newSlots)
             val cleanupResult = updatedBoard.clearCompletedLines()

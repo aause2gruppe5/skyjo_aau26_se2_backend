@@ -35,6 +35,7 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+import at.aau.se2.skyjo.game.error.InvalidMoveException
 
 @Service
 class GameService(
@@ -286,16 +287,20 @@ class GameService(
         )
 
     private fun GameActionMessage.toSwapOwnParameters(): ActionCardParameters.SwapOwnParameters {
-        val p1Row = targetPlayer1Row ?: error("targetPlayer1Row required for PLAY_ACTION_CARD")
-        val p1Col = targetPlayer1Col ?: error("targetPlayer1Col required for PLAY_ACTION_CARD")
-        val p2Row = targetPlayer2Row ?: error("targetPlayer2Row required for PLAY_ACTION_CARD")
-        val p2Col = targetPlayer2Col ?: error("targetPlayer2Col required for PLAY_ACTION_CARD")
+        val p1Row = targetPlayer1Row ?: throw InvalidMoveException("targetPlayer1Row required for PLAY_ACTION_CARD")
+        val p1Col = targetPlayer1Col ?: throw InvalidMoveException("targetPlayer1Col required for PLAY_ACTION_CARD")
+        val p2Row = targetPlayer2Row ?: throw InvalidMoveException("targetPlayer2Row required for PLAY_ACTION_CARD")
+        val p2Col = targetPlayer2Col ?: throw InvalidMoveException("targetPlayer2Col required for PLAY_ACTION_CARD")
 
         return ActionCardParameters.SwapOwnParameters(
-            pos1 = BoardPosition(p1Row, p1Col),
-            pos2 = BoardPosition(p2Row, p2Col),
+            pos1 = boardPositionOrInvalid(p1Row, p1Col),
+            pos2 = boardPositionOrInvalid(p2Row, p2Col),
         )
     }
+
+    private fun boardPositionOrInvalid(row: Int, col: Int): BoardPosition =
+        runCatching { BoardPosition(row, col) }
+            .getOrElse { throw InvalidMoveException(it.message ?: "board position is not available") }
 
     private fun ActionCardResult.toMessage(actionCardIndex: Int): ActionCardResultMessage =
         when (this) {
