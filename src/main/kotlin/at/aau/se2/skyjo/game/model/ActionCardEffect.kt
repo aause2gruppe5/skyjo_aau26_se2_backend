@@ -42,6 +42,11 @@ sealed interface ActionCardEffect {
             state.copy(pendingExtraTurns = state.pendingExtraTurns + 1)
     }
 
+    data object DoubleTurn : ActionCardEffect {
+        override fun apply(state: GameState, parameters: ActionCardParameters): GameState =
+            state.copy(pendingExtraTurns = state.pendingExtraTurns + 1)
+    }
+
     data object SwapOwnCards : ActionCardEffect {
         override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
             val swapParameters = parameters as? ActionCardParameters.SwapOwnParameters
@@ -83,6 +88,7 @@ sealed interface ActionCardEffect {
             )
         }
     }
+
     data object PlayerSwap : ActionCardEffect {
         override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
             require(parameters is ActionCardParameters.PlayerSwap) {
@@ -139,6 +145,7 @@ fun SkyjoCard.ActionCard.toEffect(): ActionCardEffect =
     when (this) {
         is SkyjoCard.ActionCard.Enlightenment -> ActionCardEffect.Enlightenment
         is SkyjoCard.ActionCard.Defense -> ActionCardEffect.Defense
+        is SkyjoCard.ActionCard.DoubleTurn -> ActionCardEffect.DoubleTurn
         is SkyjoCard.ActionCard.SwapOwnCards -> ActionCardEffect.SwapOwnCards
         is SkyjoCard.ActionCard.Placeholder -> ActionCardEffect.Placeholder
         is SkyjoCard.ActionCard.PlayerSwapCard -> ActionCardEffect.PlayerSwap

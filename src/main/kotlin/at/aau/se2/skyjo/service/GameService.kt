@@ -134,6 +134,7 @@ class GameService(
                     is SkyjoCard.ActionCard.PlayerSwapCard -> action.toPlayerSwapParameters()
                     is SkyjoCard.ActionCard.SwapOwnCards -> action.toSwapOwnParameters()
                     is SkyjoCard.ActionCard.Defense,
+                    is SkyjoCard.ActionCard.DoubleTurn,
                     is SkyjoCard.ActionCard.Placeholder -> ActionCardParameters.None
                     is SkyjoCard.ActionCard.Enlightenment ->
                         error("enlightenment requires private PLAY_ACTION_CARD command parameters")
@@ -279,6 +280,7 @@ class GameService(
                 is SkyjoCard.ActionCard.Enlightenment -> ActionCardKind.ENLIGHTENMENT
                 is SkyjoCard.ActionCard.Placeholder -> ActionCardKind.PLACEHOLDER
                 is SkyjoCard.ActionCard.Defense -> ActionCardKind.DEFENSE
+                is SkyjoCard.ActionCard.DoubleTurn -> ActionCardKind.DOUBLE_TURN
                 is SkyjoCard.ActionCard.SwapOwnCards -> ActionCardKind.SWAP_OWN_CARDS
                 is SkyjoCard.ActionCard.PlayerSwapCard -> ActionCardKind.PLAYER_SWAP
             },

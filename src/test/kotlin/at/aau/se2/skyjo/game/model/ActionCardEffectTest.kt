@@ -34,6 +34,13 @@ class ActionCardEffectTest {
     }
 
     @Test
+    fun doubleTurnCardMapsToDoubleTurnEffect() {
+        val card = SkyjoCard.ActionCard.DoubleTurn(id = 153)
+
+        assertSame(ActionCardEffect.DoubleTurn, card.toEffect())
+    }
+
+    @Test
     fun placeholderActionCardEffectKeepsStateUnchanged() {
         val state = GameState()
 
@@ -55,6 +62,41 @@ class ActionCardEffectTest {
 
         assertSame(state.players, result.players)
         assertEquals(2, result.pendingExtraTurns)
+    }
+
+    @Test
+    fun doubleTurnActionCardEffectAddsPendingExtraTurn() {
+        val state = GameState(pendingExtraTurns = 0)
+
+        val result = ActionCardEffect.DoubleTurn.apply(state, ActionCardParameters.None)
+
+        assertSame(state.players, result.players)
+        assertEquals(1, result.pendingExtraTurns)
+    }
+
+    @Test
+    fun doubleTurnActionCardEffectStacksWithExistingExtraTurns() {
+        val state = GameState(pendingExtraTurns = 2)
+
+        val result = ActionCardEffect.DoubleTurn.apply(state, ActionCardParameters.None)
+
+        assertEquals(3, result.pendingExtraTurns)
+    }
+
+    @Test
+    fun doubleTurnActionCardIsNotConsumedAsDefense() {
+        val doubleTurnCard = SkyjoCard.ActionCard.DoubleTurn(id = 1)
+        val state = GameState(
+            players = listOf(
+                PlayerState(id = "p1", board = buildBoard(), actionCards = listOf(doubleTurnCard)),
+                PlayerState(id = "p2", board = buildBoard()),
+            ),
+        )
+
+        val result = state.consumeDefenseForAttack(targetPlayerIndex = 0)
+
+        assertFalse(result.blocked)
+        assertSame(state, result.state)
     }
 
     @Test
