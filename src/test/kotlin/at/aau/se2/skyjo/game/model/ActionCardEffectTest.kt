@@ -305,6 +305,42 @@ class ActionCardEffectTest {
         assertSame(otherBoard, result.players.first { it.id == "p3" }.board)
     }
 
+    @Test
+    fun playerSwapActionCardEffectClearsCompletedLinesAfterSwap() {
+        val p1SwapPosition = BoardPosition(0, 0)
+        val p2SwapPosition = BoardPosition(0, 0)
+        val p1Board = buildBoard(
+            mapOf(
+                BoardPosition(0, 0) to BoardSlot.Occupied(SkyjoCard.NumberCard(10, 1), faceUp = true),
+                BoardPosition(0, 1) to BoardSlot.Occupied(SkyjoCard.NumberCard(11, 7), faceUp = true),
+                BoardPosition(0, 2) to BoardSlot.Occupied(SkyjoCard.NumberCard(12, 7), faceUp = true),
+                BoardPosition(0, 3) to BoardSlot.Occupied(SkyjoCard.NumberCard(13, 7), faceUp = true),
+            ),
+        )
+        val p2Board = buildBoard(
+            mapOf(
+                p2SwapPosition to BoardSlot.Occupied(SkyjoCard.NumberCard(20, 7), faceUp = true),
+            ),
+        )
+        val state = GameState(
+            players = listOf(
+                PlayerState(id = "p1", board = p1Board),
+                PlayerState(id = "p2", board = p2Board),
+            ),
+        )
+
+        val result = ActionCardEffect.PlayerSwap.apply(
+            state,
+            ActionCardParameters.PlayerSwap("p1", p1SwapPosition, "p2", p2SwapPosition),
+        )
+
+        val updatedP1Board = result.players.first { it.id == "p1" }.board
+        BoardLayout.HORIZONTAL_LINES[0].forEach { position ->
+            assertEquals(BoardSlot.Cleared, updatedP1Board.slotAt(position))
+        }
+        assertEquals(listOf(7, 7, 7, 7), result.discardPile.cards.map { it.scoreValue() })
+    }
+
     private fun buildBoard(overrides: Map<BoardPosition, BoardSlot> = emptyMap()): PlayerBoard {
         var idCounter = 1
         val slots = BoardLayout.POSITIONS.associateWith { pos ->

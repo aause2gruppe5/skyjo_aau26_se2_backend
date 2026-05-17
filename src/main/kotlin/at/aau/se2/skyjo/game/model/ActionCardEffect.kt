@@ -115,16 +115,23 @@ sealed interface ActionCardEffect {
             val updatedP2Board = p2.board.copy(
                 slots = p2.board.slots + (parameters.player2Position to slot2.copy(card = slot1.card)),
             )
+            val p1Cleanup = updatedP1Board.clearCompletedLines()
+            val p2Cleanup = updatedP2Board.clearCompletedLines()
 
             val updatedPlayers = state.players.map { player ->
                 when (player.id) {
-                    parameters.player1Id -> player.copy(board = updatedP1Board)
-                    parameters.player2Id -> player.copy(board = updatedP2Board)
+                    parameters.player1Id -> player.copy(board = p1Cleanup.board)
+                    parameters.player2Id -> player.copy(board = p2Cleanup.board)
                     else -> player
                 }
             }
 
-            return state.copy(players = updatedPlayers)
+            return state.copy(
+                players = updatedPlayers,
+                discardPile = state.discardPile
+                    .addAll(p1Cleanup.removedCards)
+                    .addAll(p2Cleanup.removedCards),
+            )
         }
     }
 }
