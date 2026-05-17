@@ -131,7 +131,7 @@ class GameService(
                     ?: error("action card index $index is not available")
                 val parameters = when (actionCard) {
                     is SkyjoCard.ActionCard.PlayerSwapCard -> action.toPlayerSwapParameters()
-                    is SkyjoCard.ActionCard.SwapOwnCards -> action.toSwapOwnParameters(state)
+                    is SkyjoCard.ActionCard.SwapOwnCards -> action.toSwapOwnParameters()
                     is SkyjoCard.ActionCard.Defense,
                     is SkyjoCard.ActionCard.Placeholder -> ActionCardParameters.None
                     is SkyjoCard.ActionCard.Enlightenment ->
@@ -285,24 +285,15 @@ class GameService(
             value = card.scoreValue(),
         )
 
-    private fun GameActionMessage.toSwapOwnParameters(state: GameState): ActionCardParameters.SwapOwnParameters {
+    private fun GameActionMessage.toSwapOwnParameters(): ActionCardParameters.SwapOwnParameters {
         val p1Row = targetPlayer1Row ?: error("targetPlayer1Row required for PLAY_ACTION_CARD")
         val p1Col = targetPlayer1Col ?: error("targetPlayer1Col required for PLAY_ACTION_CARD")
         val p2Row = targetPlayer2Row ?: error("targetPlayer2Row required for PLAY_ACTION_CARD")
         val p2Col = targetPlayer2Col ?: error("targetPlayer2Col required for PLAY_ACTION_CARD")
-        val pos1 = BoardPosition(p1Row, p1Col)
-        val pos2 = BoardPosition(p2Row, p2Col)
-        val board = state.currentPlayer().board
-        val slot1 = board.slotAt(pos1) as? BoardSlot.Occupied
-            ?: error("slot $pos1 of current player is not occupied")
-        val slot2 = board.slotAt(pos2) as? BoardSlot.Occupied
-            ?: error("slot $pos2 of current player is not occupied")
 
         return ActionCardParameters.SwapOwnParameters(
-            pos1 = pos1,
-            faceUp1 = slot2.faceUp,
-            pos2 = pos2,
-            faceUp2 = slot1.faceUp,
+            pos1 = BoardPosition(p1Row, p1Col),
+            pos2 = BoardPosition(p2Row, p2Col),
         )
     }
 

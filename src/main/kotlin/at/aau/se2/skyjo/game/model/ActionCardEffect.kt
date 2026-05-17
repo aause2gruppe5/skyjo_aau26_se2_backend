@@ -54,6 +54,7 @@ sealed interface ActionCardEffect {
             val currentPlayer = state.players.getOrNull(state.currentPlayerIndex)
                 ?: throw InvalidMoveException("current player is not available")
             val board = currentPlayer.board
+
             val slot1 = board.slotAt(parameters.pos1)
             if (slot1 !is BoardSlot.Occupied) {
                 throw InvalidMoveException("slot ${parameters.pos1} of current player is not occupied")
@@ -65,8 +66,9 @@ sealed interface ActionCardEffect {
             }
 
             val newSlots = board.slots.toMutableMap()
-            newSlots[parameters.pos1] = BoardSlot.Occupied(slot2.card, parameters.faceUp1)
-            newSlots[parameters.pos2] = BoardSlot.Occupied(slot1.card, parameters.faceUp2)
+            // Hier greifen wir nun auf die reine Server-Wahrheit (slot1.faceUp und slot2.faceUp) zu
+            newSlots[parameters.pos1] = BoardSlot.Occupied(slot2.card, slot2.faceUp)
+            newSlots[parameters.pos2] = BoardSlot.Occupied(slot1.card, slot1.faceUp)
 
             val updatedBoard = board.copy(slots = newSlots)
             val cleanupResult = updatedBoard.clearCompletedLines()
@@ -82,7 +84,6 @@ sealed interface ActionCardEffect {
             )
         }
     }
-
     data object PlayerSwap : ActionCardEffect {
         override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
             require(parameters is ActionCardParameters.PlayerSwap) {
