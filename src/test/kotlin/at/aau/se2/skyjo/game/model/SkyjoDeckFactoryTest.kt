@@ -68,6 +68,15 @@ class SkyjoDeckFactoryTest {
 
         assertEquals(21, drawPile.cards.size)
         assertTrue(drawPile.cards.all { it.id in 151..171 })
+        assertTrue(drawPile.cards.all { it is SkyjoCard.ActionCard })
+    }
+
+    @Test
+    fun actionDrawPileContainsThreeEnlightenmentCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(3, drawPile.cards.count { it is SkyjoCard.ActionCard.Enlightenment })
+        assertEquals(12, drawPile.cards.count { it is SkyjoCard.ActionCard.Placeholder })
     }
 
     @Test

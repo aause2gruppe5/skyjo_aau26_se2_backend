@@ -2,9 +2,14 @@ package at.aau.se2.skyjo.controller
 
 import at.aau.se2.skyjo.game.model.DrawSource
 import at.aau.se2.skyjo.game.model.GamePhase
+import at.aau.se2.skyjo.game.model.PlayActionCardCommand
+import at.aau.se2.skyjo.game.model.BoardLineTargetType
+import at.aau.se2.skyjo.model.ActionCardResultMessage
+import at.aau.se2.skyjo.model.ActionCardResultType
 import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameUpdateMessage
+import at.aau.se2.skyjo.model.PlayActionCardMessageResult
 import at.aau.se2.skyjo.service.GameService
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -70,6 +75,55 @@ class GameControllerTest {
         controller.gameAction(action, header)
 
         verify(gameService, never()).processAction(any(), any())
+        verify(messagingTemplate, never()).convertAndSend(any<String>(), any<Any>())
+    }
+
+    @Test
+    fun `playActionCard broadcasts public update and sends private result only to acting user`() {
+        val update = stubGameUpdate()
+        val privateResult = ActionCardResultMessage(
+            type = ActionCardResultType.ENLIGHTENMENT,
+            actionCardIndex = 0,
+            targetPlayerId = "p1",
+            targetType = BoardLineTargetType.ROW,
+            lineIndex = 0,
+            inspectedValues = listOf(1, 2, 3, 4),
+            inspectedCards = emptyList(),
+        )
+        val command = PlayActionCardCommand(actionCardIndex = 0)
+        whenever(gameService.playActionCard(any(), any())).thenReturn(
+            PlayActionCardMessageResult(
+                gameUpdate = update,
+                privateActionCardResults = mapOf("p1" to privateResult),
+            ),
+        )
+
+        controller.playActionCard(command, headerWithUser("p1"))
+
+        verify(messagingTemplate).convertAndSend("/topic/game", update)
+        verify(messagingTemplate).convertAndSendToUser("p1", "/queue/action-card-results", privateResult)
+        verify(messagingTemplate, never()).convertAndSendToUser(eq("p2"), eq("/queue/action-card-results"), any())
+    }
+
+    @Test
+    fun `playActionCard sends error to player when service throws`() {
+        whenever(gameService.playActionCard(any(), any())).thenThrow(IllegalStateException("not your turn"))
+        val command = PlayActionCardCommand(actionCardIndex = 0)
+
+        controller.playActionCard(command, headerWithUser("p1"))
+
+        verify(messagingTemplate).convertAndSendToUser(eq("p1"), eq("/queue/errors"), any())
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/game"), any<Any>())
+    }
+
+    @Test
+    fun `playActionCard does nothing when user principal is missing`() {
+        val header = SimpMessageHeaderAccessor.create()
+        val command = PlayActionCardCommand(actionCardIndex = 0)
+
+        controller.playActionCard(command, header)
+
+        verify(gameService, never()).playActionCard(any(), any())
         verify(messagingTemplate, never()).convertAndSend(any<String>(), any<Any>())
     }
 }

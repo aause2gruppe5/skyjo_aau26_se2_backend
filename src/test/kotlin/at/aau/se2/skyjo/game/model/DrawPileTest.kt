@@ -42,8 +42,8 @@ class DrawPileTest {
 
     @Test
     fun actionDrawValid() {
-        val card1 = SkyjoCard.ActionCard.Placeholder(151)
-        val card2 = SkyjoCard.ActionCard.Placeholder(152)
+        val card1 = SkyjoCard.ActionCard.Enlightenment(151)
+        val card2 = SkyjoCard.ActionCard.Enlightenment(152)
         val pile = ActionDrawPile(listOf(card1, card2))
         val result = pile.draw()
 

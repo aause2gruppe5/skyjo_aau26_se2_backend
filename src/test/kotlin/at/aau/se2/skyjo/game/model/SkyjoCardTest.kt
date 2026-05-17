@@ -12,8 +12,15 @@ class SkyjoCardTest {
     }
 
     @Test
-    fun actionCardScoreValueIsZero(){
-        val card = SkyjoCard.ActionCard.Placeholder(id = 2)
+    fun actionCardScoreValueUsesActionCardScore(){
+        val card = SkyjoCard.ActionCard.Enlightenment(id = 2)
+
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
+    fun placeholderScoreValueUsesActionCardScore(){
+        val card = SkyjoCard.ActionCard.Placeholder(id = 151)
 
         assertEquals(ACTION_CARD_SCORE, card.scoreValue())
     }
@@ -40,8 +47,15 @@ class SkyjoCardTest {
     }
 
     @Test
-    fun actionCardDisplayLabelIsAction(){
-        val card = SkyjoCard.ActionCard.Placeholder(id = 2)
+    fun enlightenmentDisplayLabelIsEnlightenment(){
+        val card = SkyjoCard.ActionCard.Enlightenment(id = 2)
+
+        assertEquals("Enlightenment", card.displayLabel())
+    }
+
+    @Test
+    fun placeholderDisplayLabelIsAction(){
+        val card = SkyjoCard.ActionCard.Placeholder(id = 151)
 
         assertEquals("Action", card.displayLabel())
     }
