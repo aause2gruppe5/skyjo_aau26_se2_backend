@@ -58,9 +58,7 @@ class PlayActionCardCommandTest {
               "actionCardIndex": 2,
               "parameters": {
                 "pos1": { "row": 0, "column": 0 },
-                "faceUp1": false,
-                "pos2": { "row": 0, "column": 1 },
-                "faceUp2": true
+                "pos2": { "row": 0, "column": 1 }
               }
             }
         """.trimIndent()
@@ -70,8 +68,6 @@ class PlayActionCardCommandTest {
 
         assertEquals(2, command.actionCardIndex)
         assertEquals(BoardPosition(0, 0), parameters.pos1)
-        assertEquals(false, parameters.faceUp1)
         assertEquals(BoardPosition(0, 1), parameters.pos2)
-        assertEquals(true, parameters.faceUp2)
     }
 }
