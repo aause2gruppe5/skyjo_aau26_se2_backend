@@ -891,6 +891,31 @@ class GameServiceTest {
 
         assertNotNull(service.getCurrentState())
     }
+
+    private fun assertSwapOwnMissingFieldFails(
+        action: GameActionMessage,
+        expectedMessage: String,
+    ) {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val actionCard = SkyjoCard.ActionCard.SwapOwnCards(id = 1001)
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(actionCards = listOf(actionCard))
+            } else {
+                player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        val exception = assertThrows<InvalidMoveException> {
+            service.processAction(currentPlayerId, action)
+        }
+
+        assertTrue(exception.message!!.contains(expectedMessage))
+        assertEquals(listOf(actionCard), getInternalGameState(service).currentPlayer().actionCards)
+    }
 }
 
 // Helpers to access internal state for test setup
@@ -958,28 +983,3 @@ private fun validSwapOwnAction() = GameActionMessage(
     targetPlayer2Row = 0,
     targetPlayer2Col = 1,
 )
-
-private fun assertSwapOwnMissingFieldFails(
-    action: GameActionMessage,
-    expectedMessage: String,
-) {
-    service.startGame(players)
-    val state = getInternalGameState(service)
-    val currentPlayerId = state.currentPlayerId!!
-    val actionCard = SkyjoCard.ActionCard.SwapOwnCards(id = 1001)
-    val updatedPlayers = state.players.mapIndexed { index, player ->
-        if (index == state.currentPlayerIndex) {
-            player.copy(actionCards = listOf(actionCard))
-        } else {
-            player
-        }
-    }
-    setInternalGameState(service, state.copy(players = updatedPlayers))
-
-    val exception = assertThrows<InvalidMoveException> {
-        service.processAction(currentPlayerId, action)
-    }
-
-    assertTrue(exception.message!!.contains(expectedMessage))
-    assertEquals(listOf(actionCard), getInternalGameState(service).currentPlayer().actionCards)
-}
