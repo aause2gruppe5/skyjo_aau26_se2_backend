@@ -50,6 +50,8 @@ class WebSocketEventListener(
 }
 
 private fun LobbyState.toUpdateMessage() = LobbyUpdateMessage(
+    lobbyId = lobbyId,
+    joinCode = joinCode,
     players = players.map { LobbyPlayerInfo(nickname = it.nickname, isHost = it.isHost) },
     status = status,
     maxPlayers = maxPlayers,

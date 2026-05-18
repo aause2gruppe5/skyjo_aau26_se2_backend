@@ -139,6 +139,8 @@ class LobbyControllerTest {
             every { lobbyService.getState() } returns currentState
 
             val updatedState = mockk<LobbyState> {
+                every { lobbyId } returns null
+                every { joinCode } returns null
                 every { players } returns listOf(mockk {
                     every { nickname } returns trimmedName
                     every { isHost } returns false
@@ -176,6 +178,8 @@ class LobbyControllerTest {
         @Test
         fun `leaveLobby verlaesst erfolgreich und schickt Update an Topic`() {
             val updatedState = mockk<LobbyState> {
+                every { lobbyId } returns null
+                every { joinCode } returns null
                 every { players } returns emptyList()
                 every { status } returns mockk()
                 every { maxPlayers } returns 4
@@ -227,6 +231,8 @@ class LobbyControllerTest {
         @Test
         fun `startGame sendet Fehler, wenn gameService throws`() {
             val lobbyState = mockk<LobbyState> {
+                every { lobbyId } returns null
+                every { joinCode } returns null
                 every { players } returns emptyList()
                 every { status } returns mockk()
                 every { maxPlayers } returns 4
@@ -254,6 +260,8 @@ class LobbyControllerTest {
                 every { isHost } returns true
             })
             val lobbyState = mockk<LobbyState> {
+                every { lobbyId } returns null
+                every { joinCode } returns null
                 every { players } returns playersList
                 every { status } returns mockk()
                 every { maxPlayers } returns 4
@@ -282,6 +290,8 @@ class LobbyControllerTest {
         fun `startGame startet Spiel mit Custom Config wenn Message vorhanden ist`() {
             val playersList = emptyList<LobbyPlayer>()
             val lobbyState = mockk<LobbyState> {
+                every { lobbyId } returns null
+                every { joinCode } returns null
                 every { players } returns playersList
                 every { status } returns mockk()
                 every { maxPlayers } returns 4

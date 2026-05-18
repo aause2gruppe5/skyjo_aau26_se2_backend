@@ -110,6 +110,8 @@ class WebSocketEventListenerTest {
 
             // Mock für den aktualisierten State nach dem Verlassen
             val updatedState = mockk<LobbyState> {
+                every { lobbyId } returns null
+                every { joinCode } returns null
                 every { players } returns emptyList()
                 every { status } returns mockk() // Nimmt dein LobbyStatus Enum
                 every { maxPlayers } returns 4

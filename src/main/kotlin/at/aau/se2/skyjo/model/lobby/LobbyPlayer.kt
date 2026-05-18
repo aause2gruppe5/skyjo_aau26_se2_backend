@@ -4,4 +4,5 @@ data class LobbyPlayer(
     val sessionId: String,
     val nickname: String,
     val isHost: Boolean,
+    val userId: String = sessionId,
 )
