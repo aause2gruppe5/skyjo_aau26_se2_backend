@@ -5,6 +5,7 @@ import at.aau.se2.skyjo.persistence.StatsRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.SingleConnectionDataSource
 
@@ -36,11 +37,44 @@ class StatsServiceTest {
     }
 
     @Test
+    fun `recordGameResult treats tied lowest scores as multiple winners`() {
+        service.recordGameResult("game-1", mapOf("user-a" to 10, "user-b" to 10))
+
+        assertEquals(1, service.getStats("user-a").wins)
+        assertEquals(1, service.getStats("user-b").wins)
+    }
+
+    @Test
+    fun `recordGameResult ignores empty score maps`() {
+        service.recordGameResult("game-empty", emptyMap())
+
+        assertEquals(0, service.getStats("user-a").gamesPlayed)
+    }
+
+    @Test
     fun `getStats returns zero state for user without games`() {
         val stats = service.getStats("user-a")
 
         assertEquals(0, stats.gamesPlayed)
         assertEquals(0.0, stats.averageScore)
+    }
+
+    @Test
+    fun `getStats rejects unknown users`() {
+        assertThrows<UnauthorizedException> {
+            service.getStats("missing")
+        }
+    }
+
+    @Test
+    fun `leaderboard ranks players and clamps invalid limits`() {
+        service.recordGameResult("game-1", mapOf("user-a" to 7, "user-b" to 15))
+
+        val leaderboard = service.leaderboard(0)
+
+        assertEquals(1, leaderboard.size)
+        assertEquals("Alice", leaderboard.single().username)
+        assertEquals(1, leaderboard.single().rank)
     }
 
     private fun createUser(userId: String, username: String) {

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.springframework.http.HttpStatus
 import org.springframework.messaging.simp.SimpMessageSendingOperations
@@ -52,6 +53,18 @@ class LobbyRestControllerTest {
     }
 
     @Test
+    fun `leaveLobbyById leaves authenticated lobby and broadcasts update`() {
+        whenever(authService.requireUser("token")).thenReturn(user())
+        whenever(lobbyService.leaveLobby("user-1", "lobby-1")).thenReturn(lobby(players = listOf("Bob")))
+
+        val result = controller.leaveLobbyById("lobby-1", "Bearer token")
+
+        assertEquals(HttpStatus.OK, result.statusCode)
+        assertEquals(listOf("Bob"), (result.body as LobbySummaryResponse).players.map { it.nickname })
+        verify(messagingTemplate).convertAndSend(any<String>(), any<Any>())
+    }
+
+    @Test
     fun `joinLobbyByCode returns not found for invalid code`() {
         whenever(authService.requireUser("token")).thenReturn(user())
         whenever(lobbyService.joinLobby(any(), any())).thenThrow(IllegalStateException("lobby not found"))
@@ -60,6 +73,28 @@ class LobbyRestControllerTest {
 
         assertEquals(HttpStatus.NOT_FOUND, result.statusCode)
         assertEquals("lobby not found", (result.body as ErrorResponse).message)
+    }
+
+    @Test
+    fun `createLobby returns bad request for invalid lobby operation`() {
+        whenever(authService.requireUser("token")).thenReturn(user())
+        whenever(lobbyService.createLobby(user())).thenThrow(IllegalStateException("user is already in a lobby"))
+
+        val result = controller.createLobby("Bearer token")
+
+        assertEquals(HttpStatus.BAD_REQUEST, result.statusCode)
+        assertEquals("user is already in a lobby", (result.body as ErrorResponse).message)
+    }
+
+    @Test
+    fun `currentLobby returns active lobby when one exists`() {
+        whenever(authService.requireUser("token")).thenReturn(user())
+        whenever(lobbyService.getCurrentLobbyForUser("user-1")).thenReturn(lobby())
+
+        val result = controller.currentLobby("Bearer token")
+
+        assertEquals(HttpStatus.OK, result.statusCode)
+        assertEquals("ABC123", (result.body as LobbySummaryResponse).joinCode)
     }
 
     @Test

@@ -74,6 +74,28 @@ class LobbyInviteServiceTest {
     }
 
     @Test
+    fun `createInvite rejects self invites`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+
+        val error = assertThrows<IllegalStateException> {
+            service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-a")
+        }
+
+        assertTrue(error.message.orEmpty().contains("yourself"))
+    }
+
+    @Test
+    fun `createInvite rejects unknown target users`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+
+        val error = assertThrows<IllegalStateException> {
+            service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "missing")
+        }
+
+        assertTrue(error.message.orEmpty().contains("user not found"))
+    }
+
+    @Test
     fun `createInvite requires inviter to be lobby member`() {
         val lobby = lobbyService.createLobby(user("user-a", "Alice"))
 
@@ -85,6 +107,41 @@ class LobbyInviteServiceTest {
     }
 
     @Test
+    fun `createInvite rejects non-waiting lobbies`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+        lobbyService.joinLobby(user("user-b", "Bob"), lobby.joinCode!!)
+        lobbyService.startGame(userId = "user-a", lobbyId = lobby.lobbyId!!)
+
+        val error = assertThrows<IllegalStateException> {
+            service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
+        }
+
+        assertTrue(error.message.orEmpty().contains("not waiting"))
+    }
+
+    @Test
+    fun `createInvite rejects duplicate pending invites`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+        service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
+
+        val error = assertThrows<IllegalStateException> {
+            service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
+        }
+
+        assertTrue(error.message.orEmpty().contains("already exists"))
+    }
+
+    @Test
+    fun `listInvites returns pending invites for the invited user`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+        service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
+
+        val invites = service.listInvites(user("user-b", "Bob"))
+
+        assertEquals(listOf("ABC123"), invites.map { it.joinCode })
+    }
+
+    @Test
     fun `acceptInvite joins invited user into lobby`() {
         val lobby = lobbyService.createLobby(user("user-a", "Alice"))
         val invite = service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
@@ -93,6 +150,55 @@ class LobbyInviteServiceTest {
 
         assertEquals(LobbyInviteStatus.ACCEPTED, accepted.status)
         assertEquals(listOf("Alice", "Bob"), lobbyService.getLobbyById(lobby.lobbyId!!)?.players?.map { it.nickname })
+    }
+
+    @Test
+    fun `acceptInvite rejects users that are not invited`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+        val invite = service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
+
+        assertThrows<UnauthorizedException> {
+            service.acceptInvite(user("user-c", "Cara"), invite.inviteId)
+        }
+    }
+
+    @Test
+    fun `acceptInvite rejects invites for lobbies that are no longer waiting`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+        val lobbyId = lobby.lobbyId!!
+        val invite = service.createInvite(user("user-a", "Alice"), lobbyId, toUserId = "user-b")
+        lobbyService.joinLobby(user("user-c", "Cara"), lobby.joinCode!!)
+        lobbyService.startGame(userId = "user-a", lobbyId = lobbyId)
+
+        val error = assertThrows<IllegalStateException> {
+            service.acceptInvite(user("user-b", "Bob"), invite.inviteId)
+        }
+
+        assertTrue(error.message.orEmpty().contains("not waiting"))
+    }
+
+    @Test
+    fun `declineInvite marks invite declined and hides it from pending invites`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+        val invite = service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
+
+        val declined = service.declineInvite(user("user-b", "Bob"), invite.inviteId)
+
+        assertEquals(LobbyInviteStatus.DECLINED, declined.status)
+        assertTrue(service.listInvites(user("user-b", "Bob")).isEmpty())
+    }
+
+    @Test
+    fun `declineInvite rejects invites that are no longer pending`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+        val invite = service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
+        service.declineInvite(user("user-b", "Bob"), invite.inviteId)
+
+        val error = assertThrows<IllegalStateException> {
+            service.declineInvite(user("user-b", "Bob"), invite.inviteId)
+        }
+
+        assertTrue(error.message.orEmpty().contains("not pending"))
     }
 
     private fun createUser(userId: String, username: String) {

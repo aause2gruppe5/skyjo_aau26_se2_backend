@@ -54,6 +54,15 @@ class FriendServiceTest {
     }
 
     @Test
+    fun `sendFriendRequest rejects unknown target users`() {
+        val error = assertThrows<IllegalStateException> {
+            service.sendFriendRequest(user("user-a", "Alice"), toUserId = "missing")
+        }
+
+        assertTrue(error.message.orEmpty().contains("user not found"))
+    }
+
+    @Test
     fun `sendFriendRequest creates pending outgoing request`() {
         val request = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
 
@@ -87,12 +96,88 @@ class FriendServiceTest {
     }
 
     @Test
+    fun `sendFriendRequest rejects duplicate pending request in either direction`() {
+        service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+
+        val sameDirection = assertThrows<IllegalStateException> {
+            service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+        }
+        val reverseDirection = assertThrows<IllegalStateException> {
+            service.sendFriendRequest(user("user-b", "Bob"), toUserId = "user-a")
+        }
+
+        assertTrue(sameDirection.message.orEmpty().contains("already exists"))
+        assertTrue(reverseDirection.message.orEmpty().contains("already exists"))
+    }
+
+    @Test
     fun `searchUsers returns relationship status`() {
         service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
 
         val results = service.searchUsers(user("user-a", "Alice"), query = "b")
 
         assertEquals(RelationshipStatus.OUTGOING_REQUEST, results.single { it.username == "Bob" }.relationshipStatus)
+    }
+
+    @Test
+    fun `searchUsers returns empty result for blank query`() {
+        val results = service.searchUsers(user("user-a", "Alice"), query = "   ")
+
+        assertTrue(results.isEmpty())
+    }
+
+    @Test
+    fun `searchUsers reports incoming friend and no relationship statuses`() {
+        service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+
+        val incoming = service.searchUsers(user("user-b", "Bob"), query = "ali")
+        val none = service.searchUsers(user("user-a", "Alice"), query = "cara")
+
+        assertEquals(RelationshipStatus.INCOMING_REQUEST, incoming.single().relationshipStatus)
+        assertEquals(RelationshipStatus.NONE, none.single().relationshipStatus)
+    }
+
+    @Test
+    fun `searchUsers reports friends after accepted request`() {
+        val request = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+        service.acceptFriendRequest(user("user-b", "Bob"), request.requestId)
+
+        val results = service.searchUsers(user("user-a", "Alice"), query = "bob")
+
+        assertEquals(RelationshipStatus.FRIENDS, results.single().relationshipStatus)
+    }
+
+    @Test
+    fun `listFriendRequests separates incoming and outgoing requests`() {
+        service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+        service.sendFriendRequest(user("user-c", "Cara"), toUserId = "user-a")
+
+        val requests = service.listFriendRequests(user("user-a", "Alice"))
+
+        assertEquals(listOf("Cara"), requests.incoming.map { it.from.username })
+        assertEquals(listOf("Bob"), requests.outgoing.map { it.to.username })
+    }
+
+    @Test
+    fun `acceptFriendRequest rejects users that are not the receiver`() {
+        val request = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+
+        assertThrows<UnauthorizedException> {
+            service.acceptFriendRequest(user("user-c", "Cara"), request.requestId)
+        }
+    }
+
+    @Test
+    fun `declineFriendRequest marks request declined and rejects a second decline`() {
+        val request = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+
+        val declined = service.declineFriendRequest(user("user-b", "Bob"), request.requestId)
+
+        assertEquals(FriendRequestStatus.DECLINED, declined.status)
+        val error = assertThrows<IllegalStateException> {
+            service.declineFriendRequest(user("user-b", "Bob"), request.requestId)
+        }
+        assertTrue(error.message.orEmpty().contains("not pending"))
     }
 
     private fun createUser(userId: String, username: String) {
