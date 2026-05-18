@@ -358,6 +358,7 @@ class LobbyControllerTest {
 
             verify { messagingTemplate.convertAndSend("/topic/lobbies/ABC123", any<LobbyUpdateMessage>()) }
             verify { messagingTemplate.convertAndSend("/topic/games/game-1", gameUpdateMessage) }
+            verify { messagingTemplate.convertAndSendToUser(playerId, "/queue/gamestate", gameUpdateMessage) }
         }
     }
 }

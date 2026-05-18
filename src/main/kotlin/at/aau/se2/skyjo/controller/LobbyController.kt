@@ -164,6 +164,9 @@ class LobbyController(
                 ?.let { lobbyId -> gameService.startGame(lobbyId, lobbyState.players, gameConfig) }
                 ?: gameService.startGame(lobbyState.players, gameConfig)
             messagingTemplate.convertAndSend(gameState.topicPath(), gameState)
+            lobbyState.players.forEach { player ->
+                messagingTemplate.convertAndSendToUser(player.userId, "/queue/gamestate", gameState)
+            }
         }.onFailure { e ->
             messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
         }
