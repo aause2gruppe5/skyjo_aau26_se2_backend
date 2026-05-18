@@ -43,3 +43,24 @@ data class FriendRequestsResponse(
 data class SendFriendRequestRequest(
     val toUserId: String,
 )
+
+enum class LobbyInviteStatus {
+    PENDING,
+    ACCEPTED,
+    DECLINED,
+}
+
+data class LobbyInviteRequest(
+    val toUserId: String,
+)
+
+data class LobbyInviteDto(
+    val inviteId: String,
+    val lobbyId: String,
+    val joinCode: String,
+    val from: SocialUserDto,
+    val to: SocialUserDto,
+    val status: LobbyInviteStatus,
+    val createdAt: Long,
+    val respondedAt: Long?,
+)
