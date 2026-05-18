@@ -240,7 +240,9 @@ class LobbyControllerTest {
             every { lobbyService.startGame(playerId) } returns lobbyState
 
             val errorMessage = "Game initialization failed"
-            every { gameService.startGame(any(), any()) } throws RuntimeException(errorMessage)
+            every {
+                gameService.startGame(any<List<LobbyPlayer>>(), any<GameConfig>())
+            } throws RuntimeException(errorMessage)
 
             controller.startGame(StartGameMessage(3, 100), headerAccessor)
 
@@ -269,7 +271,9 @@ class LobbyControllerTest {
             every { lobbyService.startGame(playerId) } returns lobbyState
 
             // Verwendet nun dein GameUpdateMessage DTO
-            val gameUpdateMessage = mockk<GameUpdateMessage>()
+            val gameUpdateMessage = mockk<GameUpdateMessage> {
+                every { gameId } returns null
+            }
 
             val configSlot = slot<GameConfig>()
             every { gameService.startGame(eq(playersList), capture(configSlot)) } returns gameUpdateMessage
@@ -298,7 +302,9 @@ class LobbyControllerTest {
             }
             every { lobbyService.startGame(playerId) } returns lobbyState
 
-            val gameUpdateMessage = mockk<GameUpdateMessage>()
+            val gameUpdateMessage = mockk<GameUpdateMessage> {
+                every { gameId } returns null
+            }
             val customMessage = StartGameMessage(maxRounds = 7, targetScore = 50)
 
             every {
@@ -312,6 +318,46 @@ class LobbyControllerTest {
 
             verify { messagingTemplate.convertAndSend("/topic/lobby", any<LobbyUpdateMessage>()) }
             verify { messagingTemplate.convertAndSend("/topic/game", gameUpdateMessage) }
+        }
+
+        @Test
+        fun `startGame startet aktuelles Join-Code Lobby-Spiel auf Game Topic`() {
+            val playersList = listOf<LobbyPlayer>(
+                mockk {
+                    every { sessionId } returns playerId
+                    every { userId } returns playerId
+                    every { nickname } returns "Alice"
+                    every { isHost } returns true
+                },
+            )
+            val lobbyState = mockk<LobbyState> {
+                every { lobbyId } returns "lobby-1"
+                every { joinCode } returns "ABC123"
+                every { players } returns playersList
+                every { status } returns LobbyStatus.IN_GAME
+                every { maxPlayers } returns 4
+            }
+            val gameUpdateMessage = GameUpdateMessage(
+                phase = at.aau.se2.skyjo.game.model.GamePhase.AWAITING_DRAW,
+                currentPlayerId = playerId,
+                players = emptyList(),
+                discardTopCard = null,
+                drawnCard = null,
+                roundResult = null,
+                roundNumber = 1,
+                totalScores = emptyList(),
+                gameOver = false,
+                gameId = "game-1",
+                lobbyId = "lobby-1",
+            )
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns lobbyState
+            every { lobbyService.startGame(userId = playerId, lobbyId = "lobby-1") } returns lobbyState
+            every { gameService.startGame("lobby-1", playersList, any()) } returns gameUpdateMessage
+
+            controller.startGame(StartGameMessage(3, 100), headerAccessor)
+
+            verify { messagingTemplate.convertAndSend("/topic/lobbies/ABC123", any<LobbyUpdateMessage>()) }
+            verify { messagingTemplate.convertAndSend("/topic/games/game-1", gameUpdateMessage) }
         }
     }
 }

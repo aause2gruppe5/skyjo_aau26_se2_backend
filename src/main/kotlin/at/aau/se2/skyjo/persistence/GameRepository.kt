@@ -17,6 +17,12 @@ import jakarta.annotation.PostConstruct
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 
+data class PersistedGame(
+    val gameId: String,
+    val lobbyId: String?,
+    val state: GameState,
+)
+
 @Repository
 class GameRepository(private val jdbc: JdbcTemplate) {
 
@@ -53,12 +59,14 @@ class GameRepository(private val jdbc: JdbcTemplate) {
             """
             CREATE TABLE IF NOT EXISTS games (
                 game_id TEXT PRIMARY KEY,
+                lobby_id TEXT,
                 state_json TEXT NOT NULL,
                 phase TEXT NOT NULL,
                 updated_at INTEGER NOT NULL
             )
             """.trimIndent()
         )
+        runCatching { jdbc.execute("ALTER TABLE games ADD COLUMN lobby_id TEXT") }
         jdbc.execute(
             """
             CREATE TABLE IF NOT EXISTS player_sessions (
@@ -72,31 +80,43 @@ class GameRepository(private val jdbc: JdbcTemplate) {
     }
 
     fun saveGame(gameId: String, state: GameState) {
+        saveGame(gameId, lobbyId = null, state = state)
+    }
+
+    fun saveGame(gameId: String, lobbyId: String?, state: GameState) {
         val json = mapper.writeValueAsString(state)
         jdbc.update(
             """
-            INSERT INTO games (game_id, state_json, phase, updated_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO games (game_id, lobby_id, state_json, phase, updated_at)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(game_id) DO UPDATE SET
+                lobby_id = excluded.lobby_id,
                 state_json = excluded.state_json,
                 phase = excluded.phase,
                 updated_at = excluded.updated_at
             """.trimIndent(),
-            gameId, json, state.phase.name, System.currentTimeMillis()
+            gameId, lobbyId, json, state.phase.name, System.currentTimeMillis()
         )
     }
 
-    fun loadActiveGame(): Pair<String, GameState>? {
+    fun loadActiveGame(): Pair<String, GameState>? =
+        loadActiveGames().firstOrNull()?.let { it.gameId to it.state }
+
+    fun loadActiveGames(): List<PersistedGame> {
         return try {
             jdbc.query(
-                "SELECT game_id, state_json FROM games WHERE phase != ? LIMIT 1",
-                { rs, _ -> rs.getString("game_id") to rs.getString("state_json") },
+                "SELECT game_id, lobby_id, state_json FROM games WHERE phase != ? ORDER BY updated_at ASC",
+                { rs, _ ->
+                    PersistedGame(
+                        gameId = rs.getString("game_id"),
+                        lobbyId = rs.getString("lobby_id"),
+                        state = mapper.readValue(rs.getString("state_json"), GameState::class.java),
+                    )
+                },
                 GamePhase.NOT_STARTED.name
-            ).firstOrNull()?.let { (gameId, json) ->
-                gameId to mapper.readValue(json, GameState::class.java)
-            }
+            )
         } catch (_: Exception) {
-            null
+            emptyList()
         }
     }
 

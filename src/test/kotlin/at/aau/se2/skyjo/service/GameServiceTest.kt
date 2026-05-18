@@ -131,6 +131,33 @@ class GameServiceTest {
         assertTrue(result.disconnectedPlayers.isEmpty())
     }
 
+    @Test
+    fun `startGame can run separate lobby games with player routing`() {
+        val first = service.startGame("lobby-1", players)
+        val secondPlayers = listOf(
+            LobbyPlayer(sessionId = "session-3", nickname = "Cara", isHost = true, userId = "player3"),
+            LobbyPlayer(sessionId = "session-4", nickname = "Dan", isHost = false, userId = "player4"),
+        )
+
+        val second = service.startGame("lobby-2", secondPlayers)
+
+        assertNotEquals(first.gameId, second.gameId)
+        assertEquals("lobby-1", first.lobbyId)
+        assertEquals("lobby-2", second.lobbyId)
+        assertEquals(first.gameId, service.getCurrentState(player1Id)?.gameId)
+        assertEquals(second.gameId, service.getCurrentState("player3")?.gameId)
+
+        val firstCurrentPlayer = service.getCurrentState(player1Id)!!.currentPlayerId!!
+        val firstAfterAction = service.processAction(
+            firstCurrentPlayer,
+            GameActionMessage(ActionType.DRAW, source = DrawSource.DECK),
+        )
+
+        assertEquals(first.gameId, firstAfterAction.gameId)
+        assertEquals(second.gameId, service.getCurrentState("player3")?.gameId)
+        assertEquals(GamePhase.AWAITING_DRAW, service.getCurrentState("player3")?.phase)
+    }
+
     // ── processAction – error handling ────────────────────────────────────
 
     @Test

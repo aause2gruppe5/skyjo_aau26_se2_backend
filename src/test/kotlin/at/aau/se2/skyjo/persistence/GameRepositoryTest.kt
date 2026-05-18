@@ -43,6 +43,19 @@ class GameRepositoryTest {
     }
 
     @Test
+    fun `saveGame and loadActiveGames return multiple active games with lobby ids`() {
+        repo.saveGame("game-1", "lobby-1", GameState(phase = GamePhase.AWAITING_DRAW))
+        repo.saveGame("game-2", "lobby-2", GameState(phase = GamePhase.AWAITING_REPLACEMENT))
+        repo.saveGame("game-3", "lobby-3", GameState(phase = GamePhase.NOT_STARTED))
+
+        val loaded = repo.loadActiveGames()
+
+        assertEquals(setOf("game-1", "game-2"), loaded.map { it.gameId }.toSet())
+        assertEquals("lobby-1", loaded.first { it.gameId == "game-1" }.lobbyId)
+        assertEquals(GamePhase.AWAITING_REPLACEMENT, loaded.first { it.gameId == "game-2" }.state.phase)
+    }
+
+    @Test
     fun `loadActiveGame ignores NOT_STARTED games`() {
         val state = GameState(phase = GamePhase.NOT_STARTED)
         repo.saveGame("game-not-started", state)

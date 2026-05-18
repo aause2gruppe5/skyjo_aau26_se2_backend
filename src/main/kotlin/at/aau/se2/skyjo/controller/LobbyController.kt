@@ -1,6 +1,7 @@
 package at.aau.se2.skyjo.controller
 
 import at.aau.se2.skyjo.model.GameConfig
+import at.aau.se2.skyjo.model.GameUpdateMessage
 import at.aau.se2.skyjo.model.LobbyPlayerInfo
 import at.aau.se2.skyjo.model.LobbyUpdateMessage
 import at.aau.se2.skyjo.model.PlayerMessage
@@ -151,13 +152,18 @@ class LobbyController(
     ) {
         val playerId = headerAccessor.user?.name ?: return
         runCatching {
-            val lobbyState = lobbyService.startGame(playerId)
+            val currentLobby = runCatching { lobbyService.getCurrentLobbyForUser(playerId) }.getOrNull()
+            val lobbyState = currentLobby?.lobbyId
+                ?.let { lobbyId -> lobbyService.startGame(userId = playerId, lobbyId = lobbyId) }
+                ?: lobbyService.startGame(playerId)
             val gameConfig = message?.let { GameConfig(maxRounds = it.maxRounds, targetScore = it.targetScore) }
                 ?: GameConfig()
             logger.info("Game started by host $playerId (maxRounds=${gameConfig.maxRounds}, targetScore=${gameConfig.targetScore})")
-            messagingTemplate.convertAndSend("/topic/lobby", lobbyState.toUpdateMessage())
-            val gameState = gameService.startGame(lobbyState.players, gameConfig)
-            messagingTemplate.convertAndSend("/topic/game", gameState)
+            messagingTemplate.convertAndSend(lobbyState.topicPath(), lobbyState.toUpdateMessage())
+            val gameState = lobbyState.lobbyId
+                ?.let { lobbyId -> gameService.startGame(lobbyId, lobbyState.players, gameConfig) }
+                ?: gameService.startGame(lobbyState.players, gameConfig)
+            messagingTemplate.convertAndSend(gameState.topicPath(), gameState)
         }.onFailure { e ->
             messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
         }
@@ -174,6 +180,12 @@ private fun LobbyState.toUpdateMessage() = LobbyUpdateMessage(
     status = status,
     maxPlayers = maxPlayers,
 )
+
+private fun LobbyState.topicPath(): String =
+    joinCode?.let { "/topic/lobbies/$it" } ?: "/topic/lobby"
+
+private fun GameUpdateMessage.topicPath(): String =
+    gameId?.let { "/topic/games/$it" } ?: "/topic/game"
 
 private fun LobbyState.toSummaryResponse() = LobbySummaryResponse(
     lobbyId = requireNotNull(lobbyId) { "lobby id is missing" },

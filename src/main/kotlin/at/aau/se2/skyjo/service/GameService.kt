@@ -1,13 +1,14 @@
 package at.aau.se2.skyjo.service
 
+import at.aau.se2.skyjo.game.error.InvalidMoveException
 import at.aau.se2.skyjo.game.model.ActionCardParameters
+import at.aau.se2.skyjo.game.model.ActionCardResult
 import at.aau.se2.skyjo.game.model.BoardLayout
 import at.aau.se2.skyjo.game.model.BoardPosition
 import at.aau.se2.skyjo.game.model.BoardSlot
 import at.aau.se2.skyjo.game.model.DrawSource
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
-import at.aau.se2.skyjo.game.model.ActionCardResult
 import at.aau.se2.skyjo.game.model.PlayActionCardCommand
 import at.aau.se2.skyjo.game.model.SkyjoCard
 import at.aau.se2.skyjo.game.model.displayLabel
@@ -35,7 +36,6 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
-import at.aau.se2.skyjo.game.error.InvalidMoveException
 
 @Service
 class GameService(
@@ -43,7 +43,21 @@ class GameService(
     private val gameRepository: GameRepository?,
 ) {
 
+    private data class ManagedGame(
+        val gameId: String,
+        val lobbyId: String?,
+        var gameState: GameState,
+        var config: GameConfig,
+        var roundNumber: Int,
+        var totalScores: Map<String, Int>,
+        var playerInfo: Map<String, String>,
+        val sessionAliases: MutableMap<String, String> = mutableMapOf(),
+        val disconnectedNicknames: MutableSet<String> = mutableSetOf(),
+    )
+
     private val lock = ReentrantLock()
+    private val games = mutableMapOf<String, ManagedGame>()
+    private val playerGameIndex = mutableMapOf<String, String>()
 
     private var currentGameId: String? = null
     private var gameState: GameState? = null
@@ -54,50 +68,64 @@ class GameService(
     private val sessionAliases: MutableMap<String, String> = mutableMapOf()
     private val disconnectedNicknames: MutableSet<String> = mutableSetOf()
 
-    fun getActiveGameId(): String? = currentGameId
-
-    fun markPlayerDisconnected(principalId: String) {
-        val nickname = playerInfo[principalId] ?: return
-        disconnectedNicknames.add(nickname)
-        gameRepository?.markDisconnected(nickname)
-    }
-
-    fun addSessionAlias(newSessionId: String, nickname: String): Boolean = lock.withLock {
-        val oldPlayerId = playerInfo.entries.firstOrNull { it.value == nickname }?.key ?: return@withLock false
-        sessionAliases[newSessionId] = oldPlayerId
-        disconnectedNicknames.remove(nickname)
-        true
-    }
-
     init {
-        gameRepository?.loadActiveGame()?.let { (id, state) ->
-            currentGameId = id
-            gameState = state
+        gameRepository?.loadActiveGames()?.forEach { persisted ->
+            val playerIds = persisted.state.players.map { it.id }
+            val managedGame = ManagedGame(
+                gameId = persisted.gameId,
+                lobbyId = persisted.lobbyId,
+                gameState = persisted.state,
+                config = GameConfig(),
+                roundNumber = 1,
+                totalScores = playerIds.associateWith { 0 },
+                playerInfo = playerIds.associateWith { it },
+            )
+            games[managedGame.gameId] = managedGame
+            playerIds.forEach { playerGameIndex[it] = managedGame.gameId }
+            if (currentGameId == null) {
+                syncLegacyFrom(managedGame)
+            }
         }
     }
 
-    fun startGame(players: List<LobbyPlayer>, gameConfig: GameConfig = GameConfig()): GameUpdateMessage = lock.withLock {
-        val playerIds = players.map { it.sessionId }
-        val initialReveals = playerIds.associateWith { setOf(BoardPosition(0, 0), BoardPosition(0, 1)) }
+    fun getActiveGameId(): String? = lock.withLock { currentGameId }
 
-        sessionAliases.clear()
-        disconnectedNicknames.clear()
-        config = gameConfig
-        roundNumber = 1
-        totalScores = playerIds.associateWith { 0 }
-        playerInfo = players.associate { it.sessionId to it.nickname }
-
-        val newState = engine.startGame(playerIds, initialReveals)
-        gameState = newState
-        currentGameId = UUID.randomUUID().toString()
-        gameRepository?.saveGame(currentGameId!!, newState)
-        players.forEach { gameRepository?.savePlayerSession(it.nickname, currentGameId!!, connected = true) }
-        toUpdateMessage(newState, gameOver = false)
+    fun markPlayerDisconnected(principalId: String) = lock.withLock {
+        val game = findManagedGameForPlayer(principalId) ?: return@withLock
+        val playerId = game.sessionAliases[principalId] ?: principalId
+        val nickname = game.playerInfo[playerId] ?: return@withLock
+        game.disconnectedNicknames.add(nickname)
+        gameRepository?.markDisconnected(playerId)
+        syncLegacyIfCurrent(game)
     }
 
+    fun addSessionAlias(newSessionId: String, nickname: String): Boolean = lock.withLock {
+        val game = games.values.firstOrNull { managed ->
+            managed.playerInfo.values.any { it == nickname }
+        } ?: return@withLock false
+        val oldPlayerId = game.playerInfo.entries.first { it.value == nickname }.key
+
+        game.sessionAliases[newSessionId] = oldPlayerId
+        playerGameIndex[newSessionId] = game.gameId
+        game.disconnectedNicknames.remove(nickname)
+        syncLegacyIfCurrent(game)
+        true
+    }
+
+    fun startGame(players: List<LobbyPlayer>, gameConfig: GameConfig = GameConfig()): GameUpdateMessage = lock.withLock {
+        startGameInternal(lobbyId = null, players = players, gameConfig = gameConfig)
+    }
+
+    fun startGame(lobbyId: String, players: List<LobbyPlayer>, gameConfig: GameConfig = GameConfig()): GameUpdateMessage =
+        lock.withLock {
+            startGameInternal(lobbyId = lobbyId, players = players, gameConfig = gameConfig)
+        }
+
     fun processAction(playerId: String, action: GameActionMessage): GameUpdateMessage = lock.withLock {
-        val state = gameState ?: error("game has not started yet")
-        val resolvedPlayerId = sessionAliases[playerId] ?: playerId
+        val game = findManagedGameForPlayer(playerId) ?: error("game has not started yet")
+        syncManagedFromLegacyIfCurrent(game)
+        val state = game.gameState
+        val resolvedPlayerId = game.sessionAliases[playerId] ?: playerId
 
         if (state.currentPlayerId != resolvedPlayerId) {
             error("not your turn (current player: ${state.currentPlayerId})")
@@ -154,19 +182,22 @@ class GameService(
             }
         }
 
-        gameState = updatedState
-        currentGameId?.let { gameRepository?.saveGame(it, updatedState) }
+        game.gameState = updatedState
+        gameRepository?.saveGame(game.gameId, game.lobbyId, updatedState)
+        syncLegacyIfCurrent(game)
 
         if (updatedState.phase == GamePhase.ROUND_FINISHED) {
-            return@withLock handleRoundFinished(updatedState)
+            return@withLock handleRoundFinished(game, updatedState)
         }
 
-        toUpdateMessage(updatedState, gameOver = false)
+        toUpdateMessage(game, updatedState, gameOver = false)
     }
 
     fun playActionCard(playerId: String, command: PlayActionCardCommand): PlayActionCardMessageResult = lock.withLock {
-        val state = gameState ?: error("game has not started yet")
-        val resolvedPlayerId = sessionAliases[playerId] ?: playerId
+        val game = findManagedGameForPlayer(playerId) ?: error("game has not started yet")
+        syncManagedFromLegacyIfCurrent(game)
+        val state = game.gameState
+        val resolvedPlayerId = game.sessionAliases[playerId] ?: playerId
 
         if (state.currentPlayerId != resolvedPlayerId) {
             error("not your turn (current player: ${state.currentPlayerId})")
@@ -178,13 +209,14 @@ class GameService(
             ?: emptyMap()
         val updatedState = updatedStateWithResult.copy(actionCardResult = null)
 
-        gameState = updatedState
-        currentGameId?.let { gameRepository?.saveGame(it, updatedState) }
+        game.gameState = updatedState
+        gameRepository?.saveGame(game.gameId, game.lobbyId, updatedState)
+        syncLegacyIfCurrent(game)
 
         val update = if (updatedState.phase == GamePhase.ROUND_FINISHED) {
-            handleRoundFinished(updatedState)
+            handleRoundFinished(game, updatedState)
         } else {
-            toUpdateMessage(updatedState, gameOver = false)
+            toUpdateMessage(game, updatedState, gameOver = false)
         }
 
         PlayActionCardMessageResult(
@@ -194,32 +226,171 @@ class GameService(
     }
 
     fun getCurrentState(): GameUpdateMessage? = lock.withLock {
-        gameState?.let { toUpdateMessage(it, gameOver = false) }
+        currentManagedGame()?.let { game ->
+            syncManagedFromLegacyIfCurrent(game)
+            toUpdateMessage(game, game.gameState, gameOver = false)
+        }
+            ?: gameState?.let { toUpdateMessageFromLegacy(it, gameOver = false) }
+    }
+
+    fun getCurrentState(playerId: String): GameUpdateMessage? = lock.withLock {
+        findManagedGameForPlayer(playerId)?.let { game ->
+            syncManagedFromLegacyIfCurrent(game)
+            toUpdateMessage(game, game.gameState, gameOver = false)
+        }
     }
 
     internal fun handleRoundFinished(finishedState: GameState): GameUpdateMessage {
+        val game = currentManagedGame() ?: error("game has not started yet")
+        syncManagedFromLegacyIfCurrent(game)
+        return handleRoundFinished(game, finishedState)
+    }
+
+    private fun startGameInternal(
+        lobbyId: String?,
+        players: List<LobbyPlayer>,
+        gameConfig: GameConfig,
+    ): GameUpdateMessage {
+        val playerIds = players.map { it.userId }
+        val initialReveals = playerIds.associateWith { setOf(BoardPosition(0, 0), BoardPosition(0, 1)) }
+        val newState = engine.startGame(playerIds, initialReveals)
+        val newGameId = UUID.randomUUID().toString()
+        val managedGame = ManagedGame(
+            gameId = newGameId,
+            lobbyId = lobbyId,
+            gameState = newState,
+            config = gameConfig,
+            roundNumber = 1,
+            totalScores = playerIds.associateWith { 0 },
+            playerInfo = players.associate { it.userId to it.nickname },
+        )
+
+        players.forEach { player ->
+            if (player.sessionId != player.userId) {
+                managedGame.sessionAliases[player.sessionId] = player.userId
+                playerGameIndex[player.sessionId] = managedGame.gameId
+            }
+            playerGameIndex[player.userId] = managedGame.gameId
+            gameRepository?.savePlayerSession(player.userId, managedGame.gameId, connected = true)
+        }
+
+        games[managedGame.gameId] = managedGame
+        gameRepository?.saveGame(managedGame.gameId, managedGame.lobbyId, newState)
+        syncLegacyFrom(managedGame)
+        return toUpdateMessage(managedGame, newState, gameOver = false)
+    }
+
+    private fun handleRoundFinished(game: ManagedGame, finishedState: GameState): GameUpdateMessage {
         val roundResult = finishedState.roundResult!!
+        game.gameState = finishedState
 
         roundResult.scores.forEach { score ->
-            totalScores = totalScores + (score.playerId to ((totalScores[score.playerId] ?: 0) + score.finalScore))
+            game.totalScores = game.totalScores + (score.playerId to ((game.totalScores[score.playerId] ?: 0) + score.finalScore))
         }
 
-        val isGameOver = roundNumber >= config.maxRounds || totalScores.values.any { it >= config.targetScore }
+        val isGameOver = game.roundNumber >= game.config.maxRounds ||
+            game.totalScores.values.any { it >= game.config.targetScore }
 
         if (isGameOver) {
-            return toUpdateMessage(finishedState, gameOver = true)
+            gameRepository?.saveGame(game.gameId, game.lobbyId, finishedState)
+            syncLegacyIfCurrent(game)
+            return toUpdateMessage(game, finishedState, gameOver = true)
         }
 
-        roundNumber++
+        game.roundNumber++
         val playerIds = finishedState.players.map { it.id }
         val initialReveals = playerIds.associateWith { setOf(BoardPosition(0, 0), BoardPosition(0, 1)) }
         val newRoundState = engine.startGame(playerIds, initialReveals)
-        gameState = newRoundState
-        currentGameId?.let { gameRepository?.saveGame(it, newRoundState) }
-        return toUpdateMessage(newRoundState, gameOver = false)
+        game.gameState = newRoundState
+        gameRepository?.saveGame(game.gameId, game.lobbyId, newRoundState)
+        syncLegacyIfCurrent(game)
+        return toUpdateMessage(game, newRoundState, gameOver = false)
     }
 
-    private fun toUpdateMessage(state: GameState, gameOver: Boolean): GameUpdateMessage {
+    private fun currentManagedGame(): ManagedGame? =
+        currentGameId?.let(games::get) ?: ensureLegacyManagedGame()
+
+    private fun findManagedGameForPlayer(principalId: String): ManagedGame? {
+        playerGameIndex[principalId]?.let { gameId ->
+            games[gameId]?.let { return it }
+        }
+
+        val matched = games.values.firstOrNull { game ->
+            principalId in game.playerInfo || principalId in game.sessionAliases
+        }
+        if (matched != null) {
+            playerGameIndex[principalId] = matched.gameId
+            return matched
+        }
+
+        val legacyGame = ensureLegacyManagedGame() ?: return null
+        val resolvedPlayerId = legacyGame.sessionAliases[principalId] ?: principalId
+        return if (resolvedPlayerId in legacyGame.playerInfo) {
+            playerGameIndex[principalId] = legacyGame.gameId
+            legacyGame
+        } else {
+            null
+        }
+    }
+
+    private fun ensureLegacyManagedGame(): ManagedGame? {
+        val state = gameState ?: return null
+        val legacyGameId = currentGameId ?: "legacy-game"
+        currentGameId = legacyGameId
+        val playerIds = state.players.map { it.id }
+        val managedGame = games.getOrPut(legacyGameId) {
+            ManagedGame(
+                gameId = legacyGameId,
+                lobbyId = null,
+                gameState = state,
+                config = config,
+                roundNumber = roundNumber.takeIf { it > 0 } ?: 1,
+                totalScores = totalScores.ifEmpty { playerIds.associateWith { 0 } },
+                playerInfo = playerInfo.ifEmpty { playerIds.associateWith { it } },
+                sessionAliases = sessionAliases.toMutableMap(),
+                disconnectedNicknames = disconnectedNicknames.toMutableSet(),
+            )
+        }
+        playerIds.forEach { playerGameIndex.putIfAbsent(it, managedGame.gameId) }
+        syncManagedFromLegacyIfCurrent(managedGame)
+        return managedGame
+    }
+
+    private fun syncLegacyFrom(game: ManagedGame) {
+        currentGameId = game.gameId
+        gameState = game.gameState
+        config = game.config
+        roundNumber = game.roundNumber
+        totalScores = game.totalScores
+        playerInfo = game.playerInfo
+        sessionAliases.clear()
+        sessionAliases.putAll(game.sessionAliases)
+        disconnectedNicknames.clear()
+        disconnectedNicknames.addAll(game.disconnectedNicknames)
+    }
+
+    private fun syncManagedFromLegacyIfCurrent(game: ManagedGame) {
+        if (game.gameId != currentGameId) {
+            return
+        }
+        game.gameState = gameState ?: game.gameState
+        game.config = config
+        game.roundNumber = roundNumber
+        game.totalScores = totalScores.ifEmpty { game.totalScores }
+        game.playerInfo = playerInfo.ifEmpty { game.playerInfo }
+        game.sessionAliases.clear()
+        game.sessionAliases.putAll(sessionAliases)
+        game.disconnectedNicknames.clear()
+        game.disconnectedNicknames.addAll(disconnectedNicknames)
+    }
+
+    private fun syncLegacyIfCurrent(game: ManagedGame) {
+        if (game.gameId == currentGameId) {
+            syncLegacyFrom(game)
+        }
+    }
+
+    private fun toUpdateMessage(game: ManagedGame, state: GameState, gameOver: Boolean): GameUpdateMessage {
         val players = state.players.map { playerState ->
             val rows = (0 until BoardLayout.ROWS).map { row ->
                 (0 until BoardLayout.COLUMNS).map { col ->
@@ -236,16 +407,16 @@ class GameService(
             }
             PlayerBoardDto(
                 playerId = playerState.id,
-                nickname = playerInfo[playerState.id] ?: playerState.id,
+                nickname = game.playerInfo[playerState.id] ?: playerState.id,
                 board = rows,
                 actionCards = playerState.actionCards.map(::toActionCardDto),
             )
         }
 
-        val scores = totalScores.map { (playerId, score) ->
+        val scores = game.totalScores.map { (playerId, score) ->
             PlayerScoreDto(
                 playerId = playerId,
-                nickname = playerInfo[playerId] ?: playerId,
+                nickname = game.playerInfo[playerId] ?: playerId,
                 totalScore = score,
             )
         }
@@ -259,12 +430,28 @@ class GameService(
             visibleActionCards = state.visibleActionCards.map(::toActionCardDto),
             actionDrawPileCount = state.actionDrawPile.size,
             roundResult = state.roundResult,
-            roundNumber = roundNumber,
+            roundNumber = game.roundNumber,
             totalScores = scores,
             gameOver = gameOver,
-            gameId = currentGameId,
-            disconnectedPlayers = disconnectedNicknames.toList(),
+            gameId = game.gameId,
+            lobbyId = game.lobbyId,
+            disconnectedPlayers = game.disconnectedNicknames.toList(),
         )
+    }
+
+    private fun toUpdateMessageFromLegacy(state: GameState, gameOver: Boolean): GameUpdateMessage {
+        val legacyGame = ManagedGame(
+            gameId = currentGameId ?: "legacy-game",
+            lobbyId = null,
+            gameState = state,
+            config = config,
+            roundNumber = roundNumber,
+            totalScores = totalScores,
+            playerInfo = playerInfo,
+            sessionAliases = sessionAliases.toMutableMap(),
+            disconnectedNicknames = disconnectedNicknames.toMutableSet(),
+        )
+        return toUpdateMessage(legacyGame, state, gameOver)
     }
 
     private fun toCardDto(card: SkyjoCard): CardDto =
