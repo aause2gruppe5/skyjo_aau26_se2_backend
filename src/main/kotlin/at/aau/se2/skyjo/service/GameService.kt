@@ -32,15 +32,17 @@ import at.aau.se2.skyjo.model.PlayActionCardMessageResult
 import at.aau.se2.skyjo.model.SlotType
 import at.aau.se2.skyjo.model.lobby.LobbyPlayer
 import at.aau.se2.skyjo.persistence.GameRepository
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.stereotype.Service
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 @Service
-class GameService(
+class GameService @Autowired constructor(
     private val engine: SkyjoEngine,
     private val gameRepository: GameRepository?,
+    private val statsService: StatsService?,
 ) {
 
     private data class ManagedGame(
@@ -58,6 +60,7 @@ class GameService(
     private val lock = ReentrantLock()
     private val games = mutableMapOf<String, ManagedGame>()
     private val playerGameIndex = mutableMapOf<String, String>()
+    private val recordedStatsGameIds = mutableSetOf<String>()
 
     private var currentGameId: String? = null
     private var gameState: GameState? = null
@@ -67,6 +70,8 @@ class GameService(
     private var playerInfo: Map<String, String> = emptyMap()
     private val sessionAliases: MutableMap<String, String> = mutableMapOf()
     private val disconnectedNicknames: MutableSet<String> = mutableSetOf()
+
+    constructor(engine: SkyjoEngine, gameRepository: GameRepository?) : this(engine, gameRepository, null)
 
     init {
         gameRepository?.loadActiveGames()?.forEach { persisted ->
@@ -293,6 +298,7 @@ class GameService(
 
         if (isGameOver) {
             gameRepository?.saveGame(game.gameId, game.lobbyId, finishedState)
+            recordFinalStatsOnce(game)
             syncLegacyIfCurrent(game)
             return toUpdateMessage(game, finishedState, gameOver = true)
         }
@@ -387,6 +393,12 @@ class GameService(
     private fun syncLegacyIfCurrent(game: ManagedGame) {
         if (game.gameId == currentGameId) {
             syncLegacyFrom(game)
+        }
+    }
+
+    private fun recordFinalStatsOnce(game: ManagedGame) {
+        if (recordedStatsGameIds.add(game.gameId)) {
+            statsService?.recordGameResult(game.gameId, game.totalScores)
         }
     }
 

@@ -19,11 +19,15 @@ import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameConfig
 import at.aau.se2.skyjo.model.lobby.LobbyPlayer
+import at.aau.se2.skyjo.persistence.AuthRepository
+import at.aau.se2.skyjo.persistence.StatsRepository
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import at.aau.se2.skyjo.game.error.InvalidMoveException
+import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.datasource.SingleConnectionDataSource
 
 class GameServiceTest {
 
@@ -910,6 +914,29 @@ class GameServiceTest {
 
         // targetScore = 0 means any score >= 0 triggers game over
         assertTrue(result.gameOver)
+    }
+
+    @Test
+    fun `handleRoundFinished records final stats once when game is over`() {
+        val dataSource = SingleConnectionDataSource("jdbc:sqlite::memory:", true)
+        val jdbc = JdbcTemplate(dataSource)
+        val authRepository = AuthRepository(jdbc)
+        val statsRepository = StatsRepository(jdbc)
+        authRepository.initSchema()
+        statsRepository.initSchema()
+        authRepository.createUser(player1Id, "Alice", "hash-1", now = 1L)
+        authRepository.createUser(player2Id, "Bob", "hash-2", now = 1L)
+        val statsService = StatsService(statsRepository, authRepository, nowProvider = { 1_000L })
+        service = GameService(engine, gameRepository = null, statsService = statsService)
+        service.startGame(players, GameConfig(maxRounds = 1))
+        val gameState = getInternalGameState(service)
+        val finishedState = engine.finishRound(gameState.copy(finisherPlayerId = gameState.currentPlayerId!!))
+
+        service.handleRoundFinished(finishedState)
+        service.handleRoundFinished(finishedState)
+
+        assertEquals(1, statsRepository.findStats(player1Id)?.gamesPlayed)
+        assertEquals(1, statsRepository.findStats(player2Id)?.gamesPlayed)
     }
 
     // ── getCurrentState ───────────────────────────────────────────────────
