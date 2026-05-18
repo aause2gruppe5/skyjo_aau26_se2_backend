@@ -37,7 +37,8 @@ class LobbyService {
         } else {
             players
         }
-        state = state.copy(players = reassigned)
+        val newStatus = if (reassigned.isEmpty()) LobbyStatus.WAITING else state.status
+        state = state.copy(players = reassigned, status = newStatus)
         state
     }
 
