@@ -126,6 +126,24 @@ class AuthService @Autowired constructor(
         return AuthUserDto(userId = user.userId, username = user.username)
     }
 
+    fun markUserConnected(userId: String, currentLobbyId: String? = null) {
+        repository.setPresence(
+            userId = userId,
+            connected = true,
+            currentLobbyId = currentLobbyId,
+            now = nowProvider(),
+        )
+    }
+
+    fun markUserDisconnected(userId: String) {
+        repository.setPresence(
+            userId = userId,
+            connected = false,
+            currentLobbyId = null,
+            now = nowProvider(),
+        )
+    }
+
     private fun createAuthResponse(userId: String, username: String, now: Long): AuthResponse {
         val token = tokenGenerator.generateToken()
         repository.createSession(

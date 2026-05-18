@@ -25,6 +25,9 @@ class WebSocketEventListenerTest {
     @MockK
     lateinit var lobbyService: LobbyService
 
+    @RelaxedMockK
+    lateinit var authService: AuthService
+
     private lateinit var listener: WebSocketEventListener
 
     @MockK
@@ -32,7 +35,7 @@ class WebSocketEventListenerTest {
 
     @BeforeEach
     fun setUp() {
-        listener = WebSocketEventListener(messagingTemplate, lobbyService, gameService = null)
+        listener = WebSocketEventListener(messagingTemplate, lobbyService, gameService = null, authService = authService)
     }
 
     private val playerId = "player-123"
@@ -51,6 +54,7 @@ class WebSocketEventListenerTest {
             listener.handleWebSocketConnectListener(event)
 
             verify { event.user }
+            verify { authService.markUserConnected(playerId) }
         }
 
         @Test
@@ -89,6 +93,7 @@ class WebSocketEventListenerTest {
 
             listener.handleWebSocketDisconnectListener(event)
 
+            verify { authService.markUserDisconnected(playerId) }
             verify { lobbyService.isPlayerInLobby(playerId) }
             verify(exactly = 0) { lobbyService.leave(any()) }
             verify { messagingTemplate wasNot Called }

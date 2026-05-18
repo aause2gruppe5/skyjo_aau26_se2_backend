@@ -144,6 +144,19 @@ class AuthServiceTest {
     }
 
     @Test
+    fun `presence can be marked online and offline`() {
+        val registered = service.register(username = "Alice", password = "password123")
+
+        service.markUserConnected(registered.user.userId)
+        val online = repo.getPresence(registered.user.userId)
+        service.markUserDisconnected(registered.user.userId)
+        val offline = repo.getPresence(registered.user.userId)
+
+        assertTrue(online?.connected == true)
+        assertFalse(offline?.connected == true)
+    }
+
+    @Test
     fun `generated default tokens are url safe and long enough`() {
         val generated = RandomSecureTokenGenerator().generateToken()
 
