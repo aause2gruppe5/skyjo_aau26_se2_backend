@@ -162,6 +162,38 @@ class GameServiceTest {
         assertEquals(GamePhase.AWAITING_DRAW, service.getCurrentState("player3")?.phase)
     }
 
+    @Test
+    fun `markPlayerDisconnected returns disconnected player's own game state`() {
+        val first = service.startGame("lobby-1", players)
+        val secondPlayers = listOf(
+            LobbyPlayer(sessionId = "session-3", nickname = "Cara", isHost = true, userId = "player3"),
+            LobbyPlayer(sessionId = "session-4", nickname = "Dan", isHost = false, userId = "player4"),
+        )
+        val second = service.startGame("lobby-2", secondPlayers)
+
+        val update = service.markPlayerDisconnected(player1Id)
+
+        assertEquals(first.gameId, update?.gameId)
+        assertTrue(update?.disconnectedPlayers?.contains("Alice") == true)
+        assertEquals(second.gameId, service.getCurrentState()?.gameId)
+    }
+
+    @Test
+    fun `reconnectPlayer restores a non-current game by game id and authenticated user id`() {
+        val first = service.startGame("lobby-1", players)
+        val secondPlayers = listOf(
+            LobbyPlayer(sessionId = "session-3", nickname = "Cara", isHost = true, userId = "player3"),
+            LobbyPlayer(sessionId = "session-4", nickname = "Dan", isHost = false, userId = "player4"),
+        )
+        service.startGame("lobby-2", secondPlayers)
+        service.markPlayerDisconnected(player1Id)
+
+        val update = service.reconnectPlayer(player1Id, "Alice", first.gameId!!)
+
+        assertEquals(first.gameId, update?.gameId)
+        assertFalse(update?.disconnectedPlayers?.contains("Alice") == true)
+    }
+
     // ── processAction – error handling ────────────────────────────────────
 
     @Test

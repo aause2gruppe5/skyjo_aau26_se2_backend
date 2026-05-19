@@ -2,6 +2,7 @@ package at.aau.se2.skyjo.event
 
 import at.aau.se2.skyjo.model.LobbyPlayerInfo
 import at.aau.se2.skyjo.model.LobbyUpdateMessage
+import at.aau.se2.skyjo.model.GameUpdateMessage
 import at.aau.se2.skyjo.model.lobby.LobbyState
 import at.aau.se2.skyjo.service.AuthService
 import at.aau.se2.skyjo.service.GameService
@@ -28,7 +29,8 @@ class WebSocketEventListener(
         val userId = event.user?.name
         logger.info("New WebSocket connection: principal=$userId")
         if (userId != null) {
-            authService?.markUserConnected(userId)
+            val currentLobbyId = runCatching { lobbyService.getCurrentLobbyForUser(userId)?.lobbyId }.getOrNull()
+            authService?.markUserConnected(userId, currentLobbyId)
         }
     }
 
@@ -36,10 +38,9 @@ class WebSocketEventListener(
     fun handleWebSocketDisconnectListener(event: SessionDisconnectEvent) {
         val playerId = event.user?.name ?: return
         authService?.markUserDisconnected(playerId)
-        gameService?.markPlayerDisconnected(playerId)
-        val currentGameState = gameService?.getCurrentState()
-        if (currentGameState != null) {
-            messagingTemplate.convertAndSend("/topic/game", currentGameState)
+        val disconnectedGameState = gameService?.markPlayerDisconnected(playerId)
+        if (disconnectedGameState != null) {
+            messagingTemplate.convertAndSend(disconnectedGameState.topicPath(), disconnectedGameState)
         }
         if (lobbyService.isPlayerInLobby(playerId)) {
             val updatedState = lobbyService.leave(playerId)
@@ -56,3 +57,6 @@ private fun LobbyState.toUpdateMessage() = LobbyUpdateMessage(
     status = status,
     maxPlayers = maxPlayers,
 )
+
+private fun GameUpdateMessage.topicPath(): String =
+    gameId?.let { "/topic/games/$it" } ?: "/topic/game"

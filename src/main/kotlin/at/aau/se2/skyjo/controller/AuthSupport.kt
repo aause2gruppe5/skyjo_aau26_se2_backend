@@ -24,6 +24,10 @@ class AuthSupport(
         return authService.requireUser(token)
     }
 
+    fun markUserConnected(userId: String, currentLobbyId: String?) {
+        authService.markUserConnected(userId, currentLobbyId)
+    }
+
     companion object {
         private const val BEARER_PREFIX = "Bearer "
     }

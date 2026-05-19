@@ -1,4 +1,5 @@
 package at.aau.se2.skyjo.controller
+import at.aau.se2.skyjo.model.auth.AuthUserDto
 import io.mockk.*
 import io.mockk.impl.annotations.MockK
 import io.mockk.impl.annotations.RelaxedMockK
@@ -33,6 +34,9 @@ class LobbyControllerTest {
 
     @MockK
     lateinit var principal: Principal
+
+    @MockK
+    lateinit var authSupport: AuthSupport
 
     private val playerId = "player-123"
 
@@ -160,6 +164,92 @@ class LobbyControllerTest {
                     any<LobbyUpdateMessage>()
                 )
             }
+        }
+
+        @Test
+        fun `joinLobby reconnectet authentifizierten Spieler ueber UserId in sein gespeichertes Spiel`() {
+            val gameRepository = mockk<at.aau.se2.skyjo.persistence.GameRepository>()
+            val gameState = GameUpdateMessage(
+                phase = at.aau.se2.skyjo.game.model.GamePhase.AWAITING_DRAW,
+                currentPlayerId = playerId,
+                players = emptyList(),
+                discardTopCard = null,
+                drawnCard = null,
+                roundResult = null,
+                roundNumber = 1,
+                totalScores = emptyList(),
+                gameOver = false,
+                gameId = "game-1",
+                lobbyId = "lobby-1",
+            )
+            controller = LobbyController(lobbyService, gameService, messagingTemplate, gameRepository)
+            every { gameRepository.getPlayerGame(playerId) } returns "game-1"
+            every { gameService.reconnectPlayer(playerId, "Alice", "game-1") } returns gameState
+
+            controller.joinLobby(PlayerMessage("Alice"), headerAccessor)
+
+            verify { gameRepository.getPlayerGame(playerId) }
+            verify { gameService.reconnectPlayer(playerId, "Alice", "game-1") }
+            verify(exactly = 0) { gameService.getActiveGameId() }
+            verify { messagingTemplate.convertAndSendToUser(playerId, "/queue/gamestate", gameState) }
+            verify { lobbyService wasNot Called }
+        }
+    }
+
+    @Nested
+    inner class RestPresenceTests {
+        private val user = AuthUserDto(userId = "user-1", username = "Alice")
+        private val authHeader = "Bearer token"
+
+        @Test
+        fun `createLobby aktualisiert Friend Presence mit neuer Lobby`() {
+            val lobby = LobbyState(
+                lobbyId = "lobby-1",
+                joinCode = "ABC123",
+                players = listOf(LobbyPlayer(sessionId = "user-1", nickname = "Alice", isHost = true, userId = "user-1")),
+            )
+            controller = LobbyController(lobbyService, gameService, messagingTemplate, null, authSupport)
+            every { authSupport.requireUser(authHeader) } returns user
+            every { authSupport.markUserConnected("user-1", "lobby-1") } just Runs
+            every { lobbyService.createLobby(user) } returns lobby
+
+            controller.createLobby(authHeader)
+
+            verify { authSupport.markUserConnected("user-1", "lobby-1") }
+        }
+
+        @Test
+        fun `joinLobbyByCode aktualisiert Friend Presence mit beigetretener Lobby`() {
+            val lobby = LobbyState(
+                lobbyId = "lobby-1",
+                joinCode = "ABC123",
+                players = listOf(LobbyPlayer(sessionId = "user-1", nickname = "Alice", isHost = false, userId = "user-1")),
+            )
+            controller = LobbyController(lobbyService, gameService, messagingTemplate, null, authSupport)
+            every { authSupport.requireUser(authHeader) } returns user
+            every { authSupport.markUserConnected("user-1", "lobby-1") } just Runs
+            every { lobbyService.joinLobby(user, "ABC123") } returns lobby
+
+            controller.joinLobbyByCode("ABC123", authHeader)
+
+            verify { authSupport.markUserConnected("user-1", "lobby-1") }
+        }
+
+        @Test
+        fun `leaveLobbyById entfernt Lobby aus Friend Presence`() {
+            val lobby = LobbyState(
+                lobbyId = "lobby-1",
+                joinCode = "ABC123",
+                players = emptyList(),
+            )
+            controller = LobbyController(lobbyService, gameService, messagingTemplate, null, authSupport)
+            every { authSupport.requireUser(authHeader) } returns user
+            every { authSupport.markUserConnected("user-1", null) } just Runs
+            every { lobbyService.leaveLobby("user-1", "lobby-1") } returns lobby
+
+            controller.leaveLobbyById("lobby-1", authHeader)
+
+            verify { authSupport.markUserConnected("user-1", null) }
         }
     }
 

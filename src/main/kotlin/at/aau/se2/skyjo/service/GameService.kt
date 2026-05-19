@@ -95,13 +95,15 @@ class GameService @Autowired constructor(
 
     fun getActiveGameId(): String? = lock.withLock { currentGameId }
 
-    fun markPlayerDisconnected(principalId: String) = lock.withLock {
-        val game = findManagedGameForPlayer(principalId) ?: return@withLock
+    fun markPlayerDisconnected(principalId: String): GameUpdateMessage? = lock.withLock {
+        val game = findManagedGameForPlayer(principalId) ?: return@withLock null
+        syncManagedFromLegacyIfCurrent(game)
         val playerId = game.sessionAliases[principalId] ?: principalId
-        val nickname = game.playerInfo[playerId] ?: return@withLock
+        val nickname = game.playerInfo[playerId] ?: return@withLock null
         game.disconnectedNicknames.add(nickname)
         gameRepository?.markDisconnected(playerId)
         syncLegacyIfCurrent(game)
+        toUpdateMessage(game, game.gameState, gameOver = false)
     }
 
     fun addSessionAlias(newSessionId: String, nickname: String): Boolean = lock.withLock {
@@ -115,6 +117,28 @@ class GameService @Autowired constructor(
         game.disconnectedNicknames.remove(nickname)
         syncLegacyIfCurrent(game)
         true
+    }
+
+    fun reconnectPlayer(principalId: String, nickname: String, gameId: String): GameUpdateMessage? = lock.withLock {
+        val game = games[gameId]
+            ?: ensureLegacyManagedGame()?.takeIf { it.gameId == gameId }
+            ?: return@withLock null
+        syncManagedFromLegacyIfCurrent(game)
+
+        val playerId = when {
+            principalId in game.playerInfo -> principalId
+            else -> game.playerInfo.entries.firstOrNull { it.value == nickname }?.key
+        } ?: return@withLock null
+
+        if (principalId != playerId) {
+            game.sessionAliases[principalId] = playerId
+        }
+        playerGameIndex[principalId] = game.gameId
+        playerGameIndex[playerId] = game.gameId
+        game.disconnectedNicknames.remove(game.playerInfo[playerId])
+        gameRepository?.savePlayerSession(playerId, game.gameId, connected = true)
+        syncLegacyIfCurrent(game)
+        toUpdateMessage(game, game.gameState, gameOver = false)
     }
 
     fun startGame(players: List<LobbyPlayer>, gameConfig: GameConfig = GameConfig()): GameUpdateMessage = lock.withLock {

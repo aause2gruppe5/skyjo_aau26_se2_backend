@@ -28,6 +28,9 @@ class WebSocketEventListenerTest {
     @RelaxedMockK
     lateinit var authService: AuthService
 
+    @MockK
+    lateinit var gameService: GameService
+
     private lateinit var listener: WebSocketEventListener
 
     @MockK
@@ -48,13 +51,29 @@ class WebSocketEventListenerTest {
             val event = mockk<SessionConnectedEvent>()
             every { event.user } returns principal
             every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
 
             // Ausführung (Wir testen hier primär, dass keine Exception fliegt,
             // da die Methode nur loggt und keinen State ändert)
             listener.handleWebSocketConnectListener(event)
 
             verify { event.user }
-            verify { authService.markUserConnected(playerId) }
+            verify { authService.markUserConnected(playerId, null) }
+        }
+
+        @Test
+        fun `markiert Verbindung mit aktueller Lobby wenn User in Join-Code Lobby ist`() {
+            val event = mockk<SessionConnectedEvent>()
+            every { event.user } returns principal
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns LobbyState(
+                lobbyId = "lobby-1",
+                joinCode = "ABC123",
+            )
+
+            listener.handleWebSocketConnectListener(event)
+
+            verify { authService.markUserConnected(playerId, "lobby-1") }
         }
 
         @Test
@@ -97,6 +116,36 @@ class WebSocketEventListenerTest {
             verify { lobbyService.isPlayerInLobby(playerId) }
             verify(exactly = 0) { lobbyService.leave(any()) }
             verify { messagingTemplate wasNot Called }
+        }
+
+        @Test
+        fun `sendet Disconnect Update fuer das tatsaechliche Spiel des Spielers`() {
+            val event = mockk<SessionDisconnectEvent>()
+            val listenerWithGame = WebSocketEventListener(messagingTemplate, lobbyService, gameService, authService)
+            val gameState = GameUpdateMessage(
+                phase = at.aau.se2.skyjo.game.model.GamePhase.AWAITING_DRAW,
+                currentPlayerId = playerId,
+                players = emptyList(),
+                discardTopCard = null,
+                drawnCard = null,
+                roundResult = null,
+                roundNumber = 1,
+                totalScores = emptyList(),
+                gameOver = false,
+                gameId = "game-1",
+                lobbyId = "lobby-1",
+                disconnectedPlayers = listOf("Alice"),
+            )
+            every { event.user } returns principal
+            every { principal.name } returns playerId
+            every { gameService.markPlayerDisconnected(playerId) } returns gameState
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+
+            listenerWithGame.handleWebSocketDisconnectListener(event)
+
+            verify { gameService.markPlayerDisconnected(playerId) }
+            verify(exactly = 0) { gameService.getCurrentState() }
+            verify { messagingTemplate.convertAndSend("/topic/games/game-1", gameState) }
         }
 
         @Test

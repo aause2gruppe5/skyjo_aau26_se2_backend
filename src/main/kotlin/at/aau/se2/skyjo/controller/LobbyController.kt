@@ -45,16 +45,16 @@ class LobbyController(
         val playerId = headerAccessor.user?.name ?: return
 
         // Rejoin: Spieler hat eine aktive Game-Session → Spiel wiederherstellen
-        val storedGameId = gameRepository?.getPlayerGame(message.playerName)
-        if (storedGameId != null && storedGameId == gameService.getActiveGameId()) {
-            gameRepository?.savePlayerSession(message.playerName, storedGameId, connected = true)
-            gameService.addSessionAlias(playerId, message.playerName)
-            val state = gameService.getCurrentState()
+        val storedGameId = gameRepository?.getPlayerGame(playerId)
+            ?: gameRepository?.getPlayerGame(message.playerName)
+        if (storedGameId != null) {
+            val state = gameService.reconnectPlayer(playerId, message.playerName, storedGameId)
             if (state != null) {
                 messagingTemplate.convertAndSendToUser(playerId, "/queue/gamestate", state)
+                logger.info("Player rejoined: ${message.playerName} (principalId=$playerId, gameId=$storedGameId)")
+                return
             }
-            logger.info("Player rejoined: ${message.playerName} (newSessionId=$playerId, gameId=$storedGameId)")
-            return
+            logger.info("Stored game session is not active for reconnect: ${message.playerName} (principalId=$playerId, gameId=$storedGameId)")
         }
 
         runCatching {
@@ -94,8 +94,10 @@ class LobbyController(
         @RequestHeader("Authorization") authorizationHeader: String?,
     ): ResponseEntity<Any> =
         runCatching {
-            val user = requireAuthSupport().requireUser(authorizationHeader)
+            val auth = requireAuthSupport()
+            val user = auth.requireUser(authorizationHeader)
             val lobby = lobbyService.createLobby(user)
+            auth.markUserConnected(user.userId, lobby.lobbyId)
             messagingTemplate.convertAndSend("/topic/lobbies/${lobby.joinCode}", lobby.toUpdateMessage())
             ResponseEntity.status(HttpStatus.CREATED).body(lobby.toSummaryResponse() as Any)
         }.getOrElse(::toRestError)
@@ -106,8 +108,10 @@ class LobbyController(
         @RequestHeader("Authorization") authorizationHeader: String?,
     ): ResponseEntity<Any> =
         runCatching {
-            val user = requireAuthSupport().requireUser(authorizationHeader)
+            val auth = requireAuthSupport()
+            val user = auth.requireUser(authorizationHeader)
             val lobby = lobbyService.joinLobby(user, joinCode)
+            auth.markUserConnected(user.userId, lobby.lobbyId)
             messagingTemplate.convertAndSend("/topic/lobbies/${lobby.joinCode}", lobby.toUpdateMessage())
             ResponseEntity.ok(lobby.toSummaryResponse() as Any)
         }.getOrElse(::toRestError)
@@ -118,8 +122,10 @@ class LobbyController(
         @RequestHeader("Authorization") authorizationHeader: String?,
     ): ResponseEntity<Any> =
         runCatching {
-            val user = requireAuthSupport().requireUser(authorizationHeader)
+            val auth = requireAuthSupport()
+            val user = auth.requireUser(authorizationHeader)
             val lobby = lobbyService.leaveLobby(user.userId, lobbyId)
+            auth.markUserConnected(user.userId, null)
             lobby.joinCode?.let { code ->
                 messagingTemplate.convertAndSend("/topic/lobbies/$code", lobby.toUpdateMessage())
             }
