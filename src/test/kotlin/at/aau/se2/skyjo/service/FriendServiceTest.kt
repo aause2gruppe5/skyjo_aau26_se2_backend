@@ -186,6 +186,16 @@ class FriendServiceTest {
     }
 
     @Test
+    fun `sendFriendRequest succeeds after previous request was declined`() {
+        val first = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+        service.declineFriendRequest(user("user-b", "Bob"), first.requestId)
+
+        val second = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+
+        assertEquals(FriendRequestStatus.PENDING, second.status)
+    }
+
+    @Test
     fun `declineFriendRequest marks request declined and rejects a second decline`() {
         val request = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
 

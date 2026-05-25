@@ -79,6 +79,11 @@ class FriendRepository(private val jdbc: JdbcTemplate) {
             """
             INSERT INTO friend_requests (request_id, from_user_id, to_user_id, status, created_at, responded_at)
             VALUES (?, ?, ?, ?, ?, NULL)
+            ON CONFLICT(from_user_id, to_user_id) DO UPDATE SET
+                request_id = excluded.request_id,
+                status = excluded.status,
+                created_at = excluded.created_at,
+                responded_at = NULL
             """.trimIndent(),
             requestId,
             fromUserId,
