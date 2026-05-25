@@ -230,7 +230,7 @@ class LobbyService(
 
     private fun ensureUserCanEnterLobby(userId: String) {
         val current = getCurrentLobbyForUser(userId)
-        if (current != null && current.status == LobbyStatus.WAITING) {
+        if (current != null && current.status != LobbyStatus.CLOSED) {
             error("user is already in a lobby")
         }
     }

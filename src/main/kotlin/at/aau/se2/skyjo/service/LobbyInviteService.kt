@@ -4,6 +4,7 @@ import at.aau.se2.skyjo.model.auth.AuthUserDto
 import at.aau.se2.skyjo.model.lobby.LobbyStatus
 import at.aau.se2.skyjo.model.social.LobbyInviteDto
 import at.aau.se2.skyjo.model.social.LobbyInviteStatus
+import at.aau.se2.skyjo.model.social.RelationshipStatus
 import at.aau.se2.skyjo.model.social.SocialUserDto
 import at.aau.se2.skyjo.persistence.AuthRepository
 import at.aau.se2.skyjo.persistence.FriendRepository
@@ -59,6 +60,9 @@ class LobbyInviteService @Autowired constructor(
         if (lobby.players.none { it.userId == from.userId }) {
             error("only a lobby member can invite")
         }
+        if (lobby.players.any { it.userId == toUserId }) {
+            error("user is already in the lobby")
+        }
         if (repository.findPendingInvite(lobbyId, toUserId) != null) {
             error("lobby invite already exists")
         }
@@ -71,11 +75,11 @@ class LobbyInviteService @Autowired constructor(
             toUserId = toUserId,
             now = nowProvider(),
         )
-        return repository.findPendingInvite(lobbyId, toUserId)?.toDto() ?: error("lobby invite not found")
+        return repository.findPendingInvite(lobbyId, toUserId)?.toDto(from.userId) ?: error("lobby invite not found")
     }
 
     fun listInvites(user: AuthUserDto): List<LobbyInviteDto> =
-        repository.listPendingInvitesForUser(user.userId).map { it.toDto() }
+        repository.listPendingInvitesForUser(user.userId).map { it.toDto(user.userId) }
 
     fun acceptInvite(user: AuthUserDto, inviteId: String): LobbyInviteDto {
         val invite = requirePendingInviteForUser(user, inviteId)
@@ -85,13 +89,13 @@ class LobbyInviteService @Autowired constructor(
         }
 
         lobbyService.joinLobby(user, invite.joinCode)
-        return repository.updateInviteStatus(inviteId, LobbyInviteStatus.ACCEPTED, nowProvider())?.toDto()
+        return repository.updateInviteStatus(inviteId, LobbyInviteStatus.ACCEPTED, nowProvider())?.toDto(user.userId)
             ?: error("lobby invite not found")
     }
 
     fun declineInvite(user: AuthUserDto, inviteId: String): LobbyInviteDto {
         requirePendingInviteForUser(user, inviteId)
-        return repository.updateInviteStatus(inviteId, LobbyInviteStatus.DECLINED, nowProvider())?.toDto()
+        return repository.updateInviteStatus(inviteId, LobbyInviteStatus.DECLINED, nowProvider())?.toDto(user.userId)
             ?: error("lobby invite not found")
     }
 
@@ -106,13 +110,21 @@ class LobbyInviteService @Autowired constructor(
         return invite
     }
 
-    private fun LobbyInviteRecord.toDto() =
+    private fun relationshipStatus(viewerId: String, targetUserId: String): RelationshipStatus =
+        when {
+            friendRepository.areFriends(viewerId, targetUserId) -> RelationshipStatus.FRIENDS
+            friendRepository.findPendingRequest(viewerId, targetUserId) != null -> RelationshipStatus.OUTGOING_REQUEST
+            friendRepository.findPendingRequest(targetUserId, viewerId) != null -> RelationshipStatus.INCOMING_REQUEST
+            else -> RelationshipStatus.NONE
+        }
+
+    private fun LobbyInviteRecord.toDto(viewerId: String) =
         LobbyInviteDto(
             inviteId = inviteId,
             lobbyId = lobbyId,
             joinCode = joinCode,
-            from = SocialUserDto(fromUserId, fromUsername),
-            to = SocialUserDto(toUserId, toUsername),
+            from = SocialUserDto(fromUserId, fromUsername, relationshipStatus(viewerId, fromUserId)),
+            to = SocialUserDto(toUserId, toUsername, relationshipStatus(viewerId, toUserId)),
             status = status,
             createdAt = createdAt,
             respondedAt = respondedAt,

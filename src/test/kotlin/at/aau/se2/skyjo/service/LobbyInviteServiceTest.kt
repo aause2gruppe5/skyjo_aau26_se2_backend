@@ -2,6 +2,7 @@ package at.aau.se2.skyjo.service
 
 import at.aau.se2.skyjo.model.auth.AuthUserDto
 import at.aau.se2.skyjo.model.social.LobbyInviteStatus
+import at.aau.se2.skyjo.model.social.RelationshipStatus
 import at.aau.se2.skyjo.persistence.AuthRepository
 import at.aau.se2.skyjo.persistence.FriendRepository
 import at.aau.se2.skyjo.persistence.LobbyInviteRepository
@@ -199,6 +200,29 @@ class LobbyInviteServiceTest {
         }
 
         assertTrue(error.message.orEmpty().contains("not pending"))
+    }
+
+    @Test
+    fun `createInvite rejects user already in the lobby`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+        lobbyService.joinLobby(user("user-b", "Bob"), lobby.joinCode!!)
+
+        val error = assertThrows<IllegalStateException> {
+            service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
+        }
+
+        assertTrue(error.message.orEmpty().contains("already in the lobby"))
+    }
+
+    @Test
+    fun `listInvites returns FRIENDS status on from field because only friends can invite`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+        service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
+
+        val invites = service.listInvites(user("user-b", "Bob"))
+
+        // Alice and Bob are friends — from Bob's view Alice's status is FRIENDS (not the old NONE)
+        assertEquals(RelationshipStatus.FRIENDS, invites.single().from.relationshipStatus)
     }
 
     private fun createUser(userId: String, username: String) {

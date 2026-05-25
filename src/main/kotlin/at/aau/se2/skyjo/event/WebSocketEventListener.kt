@@ -47,6 +47,14 @@ class WebSocketEventListener(
             logger.info("Player disconnected and removed from lobby: $playerId")
             messagingTemplate.convertAndSend("/topic/lobby", updatedState.toUpdateMessage())
         }
+        val authenticatedLobby = runCatching { lobbyService.getCurrentLobbyForUser(playerId) }.getOrNull()
+        if (authenticatedLobby?.lobbyId != null) {
+            val updatedLobby = lobbyService.leaveLobby(playerId, authenticatedLobby.lobbyId)
+            logger.info("Authenticated player disconnected and removed from lobby: $playerId")
+            updatedLobby.joinCode?.let { code ->
+                messagingTemplate.convertAndSend("/topic/lobbies/$code", updatedLobby.toUpdateMessage())
+            }
+        }
     }
 }
 

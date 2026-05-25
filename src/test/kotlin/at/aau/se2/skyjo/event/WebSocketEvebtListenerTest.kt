@@ -109,12 +109,14 @@ class WebSocketEventListenerTest {
 
             // Spieler ist nicht in der Lobby
             every { lobbyService.isPlayerInLobby(playerId) } returns false
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
 
             listener.handleWebSocketDisconnectListener(event)
 
             verify { authService.markUserDisconnected(playerId) }
             verify { lobbyService.isPlayerInLobby(playerId) }
             verify(exactly = 0) { lobbyService.leave(any()) }
+            verify(exactly = 0) { lobbyService.leaveLobby(any(), any()) }
             verify { messagingTemplate wasNot Called }
         }
 
@@ -140,6 +142,7 @@ class WebSocketEventListenerTest {
             every { principal.name } returns playerId
             every { gameService.markPlayerDisconnected(playerId) } returns gameState
             every { lobbyService.isPlayerInLobby(playerId) } returns false
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
 
             listenerWithGame.handleWebSocketDisconnectListener(event)
 
@@ -166,6 +169,7 @@ class WebSocketEventListenerTest {
                 every { maxPlayers } returns 4
             }
             every { lobbyService.leave(playerId) } returns updatedState
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
 
             listener.handleWebSocketDisconnectListener(event)
 
@@ -177,6 +181,73 @@ class WebSocketEventListenerTest {
                     any<LobbyUpdateMessage>()
                 )
             }
+        }
+
+        @Test
+        fun `authenticated user is removed from authenticated lobby on disconnect`() {
+            val event = mockk<SessionDisconnectEvent>()
+            every { event.user } returns principal
+            every { principal.name } returns playerId
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+
+            val authenticatedLobby = LobbyState(
+                lobbyId = "lobby-1",
+                joinCode = "ABC123",
+                players = listOf(
+                    LobbyPlayer(sessionId = playerId, nickname = "Alice", isHost = true, userId = playerId),
+                ),
+                status = LobbyStatus.WAITING,
+                maxPlayers = 6,
+            )
+            val updatedLobby = authenticatedLobby.copy(players = emptyList(), status = LobbyStatus.CLOSED)
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns authenticatedLobby
+            every { lobbyService.leaveLobby(playerId, "lobby-1") } returns updatedLobby
+
+            listener.handleWebSocketDisconnectListener(event)
+
+            verify { lobbyService.leaveLobby(playerId, "lobby-1") }
+            verify { messagingTemplate.convertAndSend("/topic/lobbies/ABC123", any<LobbyUpdateMessage>()) }
+        }
+
+        @Test
+        fun `no authenticated lobby action when getCurrentLobbyForUser returns null`() {
+            val event = mockk<SessionDisconnectEvent>()
+            every { event.user } returns principal
+            every { principal.name } returns playerId
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+
+            listener.handleWebSocketDisconnectListener(event)
+
+            verify(exactly = 0) { lobbyService.leaveLobby(any(), any()) }
+        }
+
+        @Test
+        fun `host transfer broadcast is sent after authenticated host disconnects`() {
+            val event = mockk<SessionDisconnectEvent>()
+            every { event.user } returns principal
+            every { principal.name } returns playerId
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+
+            val authenticatedLobby = LobbyState(
+                lobbyId = "lobby-1",
+                joinCode = "XYZ789",
+                players = listOf(
+                    LobbyPlayer(sessionId = playerId, nickname = "Host", isHost = true, userId = playerId),
+                    LobbyPlayer(sessionId = "other", nickname = "Guest", isHost = false, userId = "other"),
+                ),
+                status = LobbyStatus.WAITING,
+                maxPlayers = 6,
+            )
+            val updatedLobby = authenticatedLobby.copy(
+                players = listOf(LobbyPlayer(sessionId = "other", nickname = "Guest", isHost = true, userId = "other")),
+            )
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns authenticatedLobby
+            every { lobbyService.leaveLobby(playerId, "lobby-1") } returns updatedLobby
+
+            listener.handleWebSocketDisconnectListener(event)
+
+            verify { messagingTemplate.convertAndSend("/topic/lobbies/XYZ789", any<LobbyUpdateMessage>()) }
         }
     }
 }

@@ -159,6 +159,24 @@ class FriendServiceTest {
     }
 
     @Test
+    fun `listFriendRequests returns INCOMING_REQUEST on from field when current user is recipient`() {
+        service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+
+        val requests = service.listFriendRequests(user("user-b", "Bob"))
+
+        assertEquals(RelationshipStatus.INCOMING_REQUEST, requests.incoming.single().from.relationshipStatus)
+    }
+
+    @Test
+    fun `listFriendRequests returns OUTGOING_REQUEST on to field when current user is sender`() {
+        service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+
+        val requests = service.listFriendRequests(user("user-a", "Alice"))
+
+        assertEquals(RelationshipStatus.OUTGOING_REQUEST, requests.outgoing.single().to.relationshipStatus)
+    }
+
+    @Test
     fun `acceptFriendRequest rejects users that are not the receiver`() {
         val request = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
 

@@ -63,8 +63,8 @@ class FriendService @Autowired constructor(
 
     fun listFriendRequests(user: AuthUserDto): FriendRequestsResponse =
         FriendRequestsResponse(
-            incoming = repository.listIncomingRequests(user.userId).map { it.toDto() },
-            outgoing = repository.listOutgoingRequests(user.userId).map { it.toDto() },
+            incoming = repository.listIncomingRequests(user.userId).map { it.toDto(user.userId) },
+            outgoing = repository.listOutgoingRequests(user.userId).map { it.toDto(user.userId) },
         )
 
     fun sendFriendRequest(from: AuthUserDto, toUserId: String): FriendRequestDto {
@@ -90,7 +90,7 @@ class FriendService @Autowired constructor(
             }
             throw e
         }
-        return repository.findRequestById(requestId)?.toDto() ?: error("friend request not found")
+        return repository.findRequestById(requestId)?.toDto(from.userId) ?: error("friend request not found")
     }
 
     fun acceptFriendRequest(user: AuthUserDto, requestId: String): FriendRequestDto {
@@ -107,7 +107,7 @@ class FriendService @Autowired constructor(
             ?: error("friend request not found")
         repository.createFriendship(accepted.fromUserId, accepted.toUserId, now)
         repository.createFriendship(accepted.toUserId, accepted.fromUserId, now)
-        return accepted.toDto()
+        return accepted.toDto(user.userId)
     }
 
     fun declineFriendRequest(user: AuthUserDto, requestId: String): FriendRequestDto {
@@ -118,7 +118,7 @@ class FriendService @Autowired constructor(
         if (request.status != FriendRequestStatus.PENDING) {
             error("friend request is not pending")
         }
-        return repository.updateRequestStatus(requestId, FriendRequestStatus.DECLINED, nowProvider())?.toDto()
+        return repository.updateRequestStatus(requestId, FriendRequestStatus.DECLINED, nowProvider())?.toDto(user.userId)
             ?: error("friend request not found")
     }
 
@@ -138,11 +138,11 @@ class FriendService @Autowired constructor(
             currentLobbyId = currentLobbyId,
         )
 
-    private fun FriendRequestRecord.toDto() =
+    private fun FriendRequestRecord.toDto(viewerId: String) =
         FriendRequestDto(
             requestId = requestId,
-            from = SocialUserDto(fromUserId, fromUsername),
-            to = SocialUserDto(toUserId, toUsername),
+            from = SocialUserDto(fromUserId, fromUsername, relationshipStatus(viewerId, fromUserId)),
+            to = SocialUserDto(toUserId, toUsername, relationshipStatus(viewerId, toUserId)),
             status = status,
             createdAt = createdAt,
             respondedAt = respondedAt,

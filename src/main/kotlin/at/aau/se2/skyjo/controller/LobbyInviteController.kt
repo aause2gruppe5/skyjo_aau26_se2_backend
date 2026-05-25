@@ -1,8 +1,12 @@
 package at.aau.se2.skyjo.controller
 
+import at.aau.se2.skyjo.model.LobbyPlayerInfo
+import at.aau.se2.skyjo.model.LobbyUpdateMessage
 import at.aau.se2.skyjo.model.auth.ErrorResponse
+import at.aau.se2.skyjo.model.lobby.LobbyState
 import at.aau.se2.skyjo.model.social.LobbyInviteRequest
 import at.aau.se2.skyjo.service.LobbyInviteService
+import at.aau.se2.skyjo.service.LobbyService
 import at.aau.se2.skyjo.service.UnauthorizedException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -17,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 class LobbyInviteController(
     private val inviteService: LobbyInviteService,
+    private val lobbyService: LobbyService,
     private val authSupport: AuthSupport,
     private val messagingTemplate: SimpMessageSendingOperations,
 ) {
@@ -50,7 +55,13 @@ class LobbyInviteController(
     ): ResponseEntity<Any> =
         runCatching {
             val user = authSupport.requireUser(authorizationHeader)
-            ResponseEntity.ok(inviteService.acceptInvite(user, inviteId) as Any)
+            val accepted = inviteService.acceptInvite(user, inviteId)
+            lobbyService.getLobbyById(accepted.lobbyId)?.let { lobby ->
+                lobby.joinCode?.let { code ->
+                    messagingTemplate.convertAndSend("/topic/lobbies/$code", lobby.toUpdateMessage())
+                }
+            }
+            ResponseEntity.ok(accepted as Any)
         }.getOrElse(::toInviteError)
 
     @PostMapping("/api/lobbies/invites/{inviteId}/decline")
@@ -63,6 +74,14 @@ class LobbyInviteController(
             ResponseEntity.ok(inviteService.declineInvite(user, inviteId) as Any)
         }.getOrElse(::toInviteError)
 }
+
+private fun LobbyState.toUpdateMessage() = LobbyUpdateMessage(
+    lobbyId = lobbyId,
+    joinCode = joinCode,
+    players = players.map { LobbyPlayerInfo(nickname = it.nickname, isHost = it.isHost) },
+    status = status,
+    maxPlayers = maxPlayers,
+)
 
 private fun toInviteError(error: Throwable): ResponseEntity<Any> =
     when (error) {
