@@ -53,6 +53,7 @@ class GameService @Autowired constructor(
         var roundNumber: Int,
         var totalScores: Map<String, Int>,
         var playerInfo: Map<String, String>,
+        var completed: Boolean = false,
         val sessionAliases: MutableMap<String, String> = mutableMapOf(),
         val disconnectedNicknames: MutableSet<String> = mutableSetOf(),
     )
@@ -93,7 +94,9 @@ class GameService @Autowired constructor(
         }
     }
 
-    fun getActiveGameId(): String? = lock.withLock { currentGameId }
+    fun getActiveGameId(): String? = lock.withLock {
+        currentGameId?.takeUnless { games[it]?.completed == true }
+    }
 
     fun markPlayerDisconnected(principalId: String): GameUpdateMessage? = lock.withLock {
         val game = findManagedGameForPlayer(principalId) ?: return@withLock null
@@ -103,12 +106,12 @@ class GameService @Autowired constructor(
         game.disconnectedNicknames.add(nickname)
         gameRepository?.markDisconnected(playerId)
         syncLegacyIfCurrent(game)
-        toUpdateMessage(game, game.gameState, gameOver = false)
+        toUpdateMessage(game, game.gameState, gameOver = game.completed)
     }
 
     fun addSessionAlias(newSessionId: String, nickname: String): Boolean = lock.withLock {
         val game = games.values.firstOrNull { managed ->
-            managed.playerInfo.values.any { it == nickname }
+            !managed.completed && managed.playerInfo.values.any { it == nickname }
         } ?: return@withLock false
         val oldPlayerId = game.playerInfo.entries.first { it.value == nickname }.key
 
@@ -120,8 +123,8 @@ class GameService @Autowired constructor(
     }
 
     fun reconnectPlayer(principalId: String, nickname: String, gameId: String): GameUpdateMessage? = lock.withLock {
-        val game = games[gameId]
-            ?: ensureLegacyManagedGame()?.takeIf { it.gameId == gameId }
+        val game = games[gameId]?.takeUnless { it.completed }
+            ?: ensureLegacyManagedGame()?.takeIf { it.gameId == gameId && !it.completed }
             ?: return@withLock null
         syncManagedFromLegacyIfCurrent(game)
 
@@ -138,7 +141,7 @@ class GameService @Autowired constructor(
         game.disconnectedNicknames.remove(game.playerInfo[playerId])
         gameRepository?.savePlayerSession(playerId, game.gameId, connected = true)
         syncLegacyIfCurrent(game)
-        toUpdateMessage(game, game.gameState, gameOver = false)
+        toUpdateMessage(game, game.gameState, gameOver = game.completed)
     }
 
     fun startGame(players: List<LobbyPlayer>, gameConfig: GameConfig = GameConfig()): GameUpdateMessage = lock.withLock {
@@ -257,7 +260,7 @@ class GameService @Autowired constructor(
     fun getCurrentState(): GameUpdateMessage? = lock.withLock {
         currentManagedGame()?.let { game ->
             syncManagedFromLegacyIfCurrent(game)
-            toUpdateMessage(game, game.gameState, gameOver = false)
+            toUpdateMessage(game, game.gameState, gameOver = game.completed)
         }
             ?: gameState?.let { toUpdateMessageFromLegacy(it, gameOver = false) }
     }
@@ -265,7 +268,7 @@ class GameService @Autowired constructor(
     fun getCurrentState(playerId: String): GameUpdateMessage? = lock.withLock {
         findManagedGameForPlayer(playerId)?.let { game ->
             syncManagedFromLegacyIfCurrent(game)
-            toUpdateMessage(game, game.gameState, gameOver = false)
+            toUpdateMessage(game, game.gameState, gameOver = game.completed)
         }
     }
 
@@ -310,6 +313,9 @@ class GameService @Autowired constructor(
     }
 
     private fun handleRoundFinished(game: ManagedGame, finishedState: GameState): GameUpdateMessage {
+        if (game.completed) {
+            return toUpdateMessage(game, game.gameState, gameOver = true)
+        }
         val roundResult = finishedState.roundResult!!
         game.gameState = finishedState
 
@@ -321,7 +327,10 @@ class GameService @Autowired constructor(
             game.totalScores.values.any { it >= game.config.targetScore }
 
         if (isGameOver) {
-            gameRepository?.saveGame(game.gameId, game.lobbyId, finishedState)
+            game.completed = true
+            gameRepository?.saveGame(game.gameId, game.lobbyId, finishedState, completed = true)
+            gameRepository?.deletePlayerSessionsForGame(game.gameId)
+            removePlayerIndexes(game)
             recordFinalStatsOnce(game)
             syncLegacyIfCurrent(game)
             return toUpdateMessage(game, finishedState, gameOver = true)
@@ -342,18 +351,18 @@ class GameService @Autowired constructor(
 
     private fun findManagedGameForPlayer(principalId: String): ManagedGame? {
         playerGameIndex[principalId]?.let { gameId ->
-            games[gameId]?.let { return it }
+            games[gameId]?.takeUnless { it.completed }?.let { return it }
         }
 
         val matched = games.values.firstOrNull { game ->
-            principalId in game.playerInfo || principalId in game.sessionAliases
+            !game.completed && (principalId in game.playerInfo || principalId in game.sessionAliases)
         }
         if (matched != null) {
             playerGameIndex[principalId] = matched.gameId
             return matched
         }
 
-        val legacyGame = ensureLegacyManagedGame() ?: return null
+        val legacyGame = ensureLegacyManagedGame()?.takeUnless { it.completed } ?: return null
         val resolvedPlayerId = legacyGame.sessionAliases[principalId] ?: principalId
         return if (resolvedPlayerId in legacyGame.playerInfo) {
             playerGameIndex[principalId] = legacyGame.gameId
@@ -424,6 +433,10 @@ class GameService @Autowired constructor(
         if (recordedStatsGameIds.add(game.gameId)) {
             statsService?.recordGameResult(game.gameId, game.totalScores)
         }
+    }
+
+    private fun removePlayerIndexes(game: ManagedGame) {
+        (game.playerInfo.keys + game.sessionAliases.keys).forEach { playerGameIndex.remove(it) }
     }
 
     private fun toUpdateMessage(game: ManagedGame, state: GameState, gameOver: Boolean): GameUpdateMessage {

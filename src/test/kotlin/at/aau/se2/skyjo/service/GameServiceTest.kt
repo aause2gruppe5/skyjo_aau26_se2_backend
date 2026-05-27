@@ -20,6 +20,7 @@ import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameConfig
 import at.aau.se2.skyjo.model.lobby.LobbyPlayer
 import at.aau.se2.skyjo.persistence.AuthRepository
+import at.aau.se2.skyjo.persistence.GameRepository
 import at.aau.se2.skyjo.persistence.StatsRepository
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -890,7 +891,7 @@ class GameServiceTest {
 
     @Test
     fun `handleRoundFinished accumulates scores into totalScores`() {
-        service.startGame(players, GameConfig(maxRounds = 2))
+        service.startGame(players, GameConfig(maxRounds = 2, targetScore = 1000))
 
         // Build a finished round state with known scores by using engine directly
         val currentState = service.getCurrentState()!!
@@ -933,6 +934,27 @@ class GameServiceTest {
 
         assertTrue(result.gameOver)
         assertEquals(GamePhase.ROUND_FINISHED, result.phase)
+    }
+
+    @Test
+    fun `completed game is not active or rejoinable`() {
+        val dataSource = SingleConnectionDataSource("jdbc:sqlite::memory:", true)
+        val jdbc = JdbcTemplate(dataSource)
+        val repository = GameRepository(jdbc)
+        repository.initSchema()
+        service = GameService(engine, repository)
+        service.startGame(players, GameConfig(maxRounds = 1))
+        val gameState = getInternalGameState(service)
+        val finishedState = engine.finishRound(gameState.copy(finisherPlayerId = gameState.currentPlayerId!!))
+
+        val result = service.handleRoundFinished(finishedState)
+
+        assertTrue(result.gameOver)
+        assertNull(repository.getPlayerGame(player1Id))
+        assertNull(service.getActiveGameId())
+        assertNull(service.reconnectPlayer(player1Id, "Alice", result.gameId!!))
+        assertNull(service.getCurrentState(player1Id))
+        assertNull(GameService(engine, repository).getCurrentState(player1Id))
     }
 
     @Test

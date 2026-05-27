@@ -62,11 +62,13 @@ class GameRepository(private val jdbc: JdbcTemplate) {
                 lobby_id TEXT,
                 state_json TEXT NOT NULL,
                 phase TEXT NOT NULL,
+                completed INTEGER NOT NULL DEFAULT 0,
                 updated_at INTEGER NOT NULL
             )
             """.trimIndent()
         )
         runCatching { jdbc.execute("ALTER TABLE games ADD COLUMN lobby_id TEXT") }
+        runCatching { jdbc.execute("ALTER TABLE games ADD COLUMN completed INTEGER NOT NULL DEFAULT 0") }
         jdbc.execute(
             """
             CREATE TABLE IF NOT EXISTS player_sessions (
@@ -79,23 +81,24 @@ class GameRepository(private val jdbc: JdbcTemplate) {
         )
     }
 
-    fun saveGame(gameId: String, state: GameState) {
-        saveGame(gameId, lobbyId = null, state = state)
+    fun saveGame(gameId: String, state: GameState, completed: Boolean = false) {
+        saveGame(gameId, lobbyId = null, state = state, completed = completed)
     }
 
-    fun saveGame(gameId: String, lobbyId: String?, state: GameState) {
+    fun saveGame(gameId: String, lobbyId: String?, state: GameState, completed: Boolean = false) {
         val json = mapper.writeValueAsString(state)
         jdbc.update(
             """
-            INSERT INTO games (game_id, lobby_id, state_json, phase, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO games (game_id, lobby_id, state_json, phase, completed, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(game_id) DO UPDATE SET
                 lobby_id = excluded.lobby_id,
                 state_json = excluded.state_json,
                 phase = excluded.phase,
+                completed = excluded.completed,
                 updated_at = excluded.updated_at
             """.trimIndent(),
-            gameId, lobbyId, json, state.phase.name, System.currentTimeMillis()
+            gameId, lobbyId, json, state.phase.name, if (completed) 1 else 0, System.currentTimeMillis()
         )
     }
 
@@ -105,7 +108,7 @@ class GameRepository(private val jdbc: JdbcTemplate) {
     fun loadActiveGames(): List<PersistedGame> {
         return try {
             jdbc.query(
-                "SELECT game_id, lobby_id, state_json FROM games WHERE phase != ? ORDER BY updated_at ASC",
+                "SELECT game_id, lobby_id, state_json FROM games WHERE completed = 0 AND phase != ? AND phase != ? ORDER BY updated_at ASC",
                 { rs, _ ->
                     PersistedGame(
                         gameId = rs.getString("game_id"),
@@ -113,7 +116,8 @@ class GameRepository(private val jdbc: JdbcTemplate) {
                         state = mapper.readValue(rs.getString("state_json"), GameState::class.java),
                     )
                 },
-                GamePhase.NOT_STARTED.name
+                GamePhase.NOT_STARTED.name,
+                GamePhase.ROUND_FINISHED.name
             )
         } catch (_: Exception) {
             emptyList()
@@ -141,12 +145,26 @@ class GameRepository(private val jdbc: JdbcTemplate) {
         )
     }
 
+    fun deletePlayerSessionsForGame(gameId: String) {
+        jdbc.update("DELETE FROM player_sessions WHERE game_id = ?", gameId)
+    }
+
     fun getPlayerGame(playerName: String): String? {
         return try {
             jdbc.query(
-                "SELECT game_id FROM player_sessions WHERE player_name = ?",
+                """
+                SELECT player_sessions.game_id
+                FROM player_sessions
+                JOIN games ON games.game_id = player_sessions.game_id
+                WHERE player_sessions.player_name = ?
+                  AND games.completed = 0
+                  AND games.phase != ?
+                  AND games.phase != ?
+                """.trimIndent(),
                 { rs, _ -> rs.getString("game_id") },
-                playerName
+                playerName,
+                GamePhase.NOT_STARTED.name,
+                GamePhase.ROUND_FINISHED.name
             ).firstOrNull()
         } catch (_: Exception) {
             null
