@@ -1,0 +1,22 @@
+package at.aau.se2.skyjo.model.stats
+
+data class PlayerStatsDto(
+    val userId: String,
+    val username: String,
+    val gamesPlayed: Int,
+    val wins: Int,
+    val totalScore: Int,
+    val bestScore: Int?,
+    val averageScore: Double,
+)
+
+data class LeaderboardEntryDto(
+    val rank: Int,
+    val userId: String,
+    val username: String,
+    val averageScore: Double,
+    val wins: Int,
+    val gamesPlayed: Int,
+    val bestScore: Int?,
+    val totalScore: Int,
+)

@@ -44,17 +44,19 @@ class GameControllerTest {
         roundNumber = 1,
         totalScores = emptyList(),
         gameOver = false,
+        gameId = "game-1",
+        lobbyId = "lobby-1",
     )
 
     @Test
-    fun `gameAction broadcasts updated state to topic game`() {
+    fun `gameAction broadcasts updated state to game-specific topic`() {
         val update = stubGameUpdate()
         whenever(gameService.processAction(any(), any())).thenReturn(update)
         val action = GameActionMessage(ActionType.DRAW, source = DrawSource.DECK)
 
         controller.gameAction(action, headerWithUser("p1"))
 
-        verify(messagingTemplate).convertAndSend("/topic/game", update)
+        verify(messagingTemplate).convertAndSend("/topic/games/game-1", update)
     }
 
     @Test
@@ -100,7 +102,7 @@ class GameControllerTest {
 
         controller.playActionCard(command, headerWithUser("p1"))
 
-        verify(messagingTemplate).convertAndSend("/topic/game", update)
+        verify(messagingTemplate).convertAndSend("/topic/games/game-1", update)
         verify(messagingTemplate).convertAndSendToUser("p1", "/queue/action-card-results", privateResult)
         verify(messagingTemplate, never()).convertAndSendToUser(eq("p2"), eq("/queue/action-card-results"), any())
     }

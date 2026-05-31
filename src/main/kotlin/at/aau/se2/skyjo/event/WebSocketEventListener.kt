@@ -2,7 +2,9 @@ package at.aau.se2.skyjo.event
 
 import at.aau.se2.skyjo.model.LobbyPlayerInfo
 import at.aau.se2.skyjo.model.LobbyUpdateMessage
+import at.aau.se2.skyjo.model.GameUpdateMessage
 import at.aau.se2.skyjo.model.lobby.LobbyState
+import at.aau.se2.skyjo.service.AuthService
 import at.aau.se2.skyjo.service.GameService
 import at.aau.se2.skyjo.service.LobbyService
 import org.slf4j.LoggerFactory
@@ -17,33 +19,52 @@ class WebSocketEventListener(
     private val messagingTemplate: SimpMessageSendingOperations,
     private val lobbyService: LobbyService,
     private val gameService: GameService?,
+    private val authService: AuthService? = null,
 ) {
 
     private val logger = LoggerFactory.getLogger(WebSocketEventListener::class.java)
 
     @EventListener
     fun handleWebSocketConnectListener(event: SessionConnectedEvent) {
-        logger.info("New WebSocket connection: principal=${event.user?.name}")
+        val userId = event.user?.name
+        logger.info("New WebSocket connection: principal=$userId")
+        if (userId != null) {
+            val currentLobbyId = runCatching { lobbyService.getCurrentLobbyForUser(userId)?.lobbyId }.getOrNull()
+            authService?.markUserConnected(userId, currentLobbyId)
+        }
     }
 
     @EventListener
     fun handleWebSocketDisconnectListener(event: SessionDisconnectEvent) {
         val playerId = event.user?.name ?: return
-        gameService?.markPlayerDisconnected(playerId)
-        val currentGameState = gameService?.getCurrentState()
-        if (currentGameState != null) {
-            messagingTemplate.convertAndSend("/topic/game", currentGameState)
+        authService?.markUserDisconnected(playerId)
+        val disconnectedGameState = gameService?.markPlayerDisconnected(playerId)
+        if (disconnectedGameState != null) {
+            messagingTemplate.convertAndSend(disconnectedGameState.topicPath(), disconnectedGameState)
         }
         if (lobbyService.isPlayerInLobby(playerId)) {
             val updatedState = lobbyService.leave(playerId)
             logger.info("Player disconnected and removed from lobby: $playerId")
             messagingTemplate.convertAndSend("/topic/lobby", updatedState.toUpdateMessage())
         }
+        val authenticatedLobby = runCatching { lobbyService.getCurrentLobbyForUser(playerId) }.getOrNull()
+        if (authenticatedLobby?.lobbyId != null) {
+            val updatedLobby = lobbyService.leaveLobby(playerId, authenticatedLobby.lobbyId)
+            logger.info("Authenticated player disconnected and removed from lobby: $playerId")
+            updatedLobby.joinCode?.let { code ->
+                messagingTemplate.convertAndSend("/topic/lobbies/$code", updatedLobby.toUpdateMessage())
+            }
+        }
     }
 }
 
 private fun LobbyState.toUpdateMessage() = LobbyUpdateMessage(
+    lobbyId = lobbyId,
+    joinCode = joinCode,
     players = players.map { LobbyPlayerInfo(nickname = it.nickname, isHost = it.isHost) },
     status = status,
     maxPlayers = maxPlayers,
 )
+
+private fun GameUpdateMessage.topicPath(): String =
+    gameId?.let { "/topic/games/$it" } ?: "/topic/game"

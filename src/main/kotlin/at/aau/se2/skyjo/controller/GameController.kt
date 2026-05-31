@@ -27,7 +27,7 @@ class GameController(
         runCatching {
             val updatedState = gameService.processAction(playerId, action)
             logger.info("Game action ${action.type} by $playerId")
-            messagingTemplate.convertAndSend("/topic/game", updatedState)
+            messagingTemplate.convertAndSend(updatedState.topicPath(), updatedState)
         }.onFailure { e ->
             messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
         }
@@ -42,7 +42,7 @@ class GameController(
         runCatching {
             val result = gameService.playActionCard(playerId, command)
             logger.info("Action card ${command.actionCardIndex} played by $playerId")
-            messagingTemplate.convertAndSend("/topic/game", result.gameUpdate)
+            messagingTemplate.convertAndSend(result.gameUpdate.topicPath(), result.gameUpdate)
             result.privateActionCardResults.forEach { (recipientPlayerId, actionCardResult) ->
                 messagingTemplate.convertAndSendToUser(
                     recipientPlayerId,
@@ -54,4 +54,7 @@ class GameController(
             messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
         }
     }
+
+    private fun at.aau.se2.skyjo.model.GameUpdateMessage.topicPath(): String =
+        gameId?.let { "/topic/games/$it" } ?: "/topic/game"
 }

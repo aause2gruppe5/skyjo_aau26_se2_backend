@@ -19,11 +19,16 @@ import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameConfig
 import at.aau.se2.skyjo.model.lobby.LobbyPlayer
+import at.aau.se2.skyjo.persistence.AuthRepository
+import at.aau.se2.skyjo.persistence.GameRepository
+import at.aau.se2.skyjo.persistence.StatsRepository
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import at.aau.se2.skyjo.game.error.InvalidMoveException
+import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.datasource.SingleConnectionDataSource
 
 class GameServiceTest {
 
@@ -129,6 +134,65 @@ class GameServiceTest {
         val result = service.startGame(players)
 
         assertTrue(result.disconnectedPlayers.isEmpty())
+    }
+
+    @Test
+    fun `startGame can run separate lobby games with player routing`() {
+        val first = service.startGame("lobby-1", players)
+        val secondPlayers = listOf(
+            LobbyPlayer(sessionId = "session-3", nickname = "Cara", isHost = true, userId = "player3"),
+            LobbyPlayer(sessionId = "session-4", nickname = "Dan", isHost = false, userId = "player4"),
+        )
+
+        val second = service.startGame("lobby-2", secondPlayers)
+
+        assertNotEquals(first.gameId, second.gameId)
+        assertEquals("lobby-1", first.lobbyId)
+        assertEquals("lobby-2", second.lobbyId)
+        assertEquals(first.gameId, service.getCurrentState(player1Id)?.gameId)
+        assertEquals(second.gameId, service.getCurrentState("player3")?.gameId)
+
+        val firstCurrentPlayer = service.getCurrentState(player1Id)!!.currentPlayerId!!
+        val firstAfterAction = service.processAction(
+            firstCurrentPlayer,
+            GameActionMessage(ActionType.DRAW, source = DrawSource.DECK),
+        )
+
+        assertEquals(first.gameId, firstAfterAction.gameId)
+        assertEquals(second.gameId, service.getCurrentState("player3")?.gameId)
+        assertEquals(GamePhase.AWAITING_DRAW, service.getCurrentState("player3")?.phase)
+    }
+
+    @Test
+    fun `markPlayerDisconnected returns disconnected player's own game state`() {
+        val first = service.startGame("lobby-1", players)
+        val secondPlayers = listOf(
+            LobbyPlayer(sessionId = "session-3", nickname = "Cara", isHost = true, userId = "player3"),
+            LobbyPlayer(sessionId = "session-4", nickname = "Dan", isHost = false, userId = "player4"),
+        )
+        val second = service.startGame("lobby-2", secondPlayers)
+
+        val update = service.markPlayerDisconnected(player1Id)
+
+        assertEquals(first.gameId, update?.gameId)
+        assertTrue(update?.disconnectedPlayers?.contains("Alice") == true)
+        assertEquals(second.gameId, service.getCurrentState()?.gameId)
+    }
+
+    @Test
+    fun `reconnectPlayer restores a non-current game by game id and authenticated user id`() {
+        val first = service.startGame("lobby-1", players)
+        val secondPlayers = listOf(
+            LobbyPlayer(sessionId = "session-3", nickname = "Cara", isHost = true, userId = "player3"),
+            LobbyPlayer(sessionId = "session-4", nickname = "Dan", isHost = false, userId = "player4"),
+        )
+        service.startGame("lobby-2", secondPlayers)
+        service.markPlayerDisconnected(player1Id)
+
+        val update = service.reconnectPlayer(player1Id, "Alice", first.gameId!!)
+
+        assertEquals(first.gameId, update?.gameId)
+        assertFalse(update?.disconnectedPlayers?.contains("Alice") == true)
     }
 
     // ── processAction – error handling ────────────────────────────────────
@@ -827,7 +891,7 @@ class GameServiceTest {
 
     @Test
     fun `handleRoundFinished accumulates scores into totalScores`() {
-        service.startGame(players, GameConfig(maxRounds = 2))
+        service.startGame(players, GameConfig(maxRounds = 2, targetScore = 1000))
 
         // Build a finished round state with known scores by using engine directly
         val currentState = service.getCurrentState()!!
@@ -873,6 +937,27 @@ class GameServiceTest {
     }
 
     @Test
+    fun `completed game is not active or rejoinable`() {
+        val dataSource = SingleConnectionDataSource("jdbc:sqlite::memory:", true)
+        val jdbc = JdbcTemplate(dataSource)
+        val repository = GameRepository(jdbc)
+        repository.initSchema()
+        service = GameService(engine, repository)
+        service.startGame(players, GameConfig(maxRounds = 1))
+        val gameState = getInternalGameState(service)
+        val finishedState = engine.finishRound(gameState.copy(finisherPlayerId = gameState.currentPlayerId!!))
+
+        val result = service.handleRoundFinished(finishedState)
+
+        assertTrue(result.gameOver)
+        assertNull(repository.getPlayerGame(player1Id))
+        assertNull(service.getActiveGameId())
+        assertNull(service.reconnectPlayer(player1Id, "Alice", result.gameId!!))
+        assertNull(service.getCurrentState(player1Id))
+        assertNull(GameService(engine, repository).getCurrentState(player1Id))
+    }
+
+    @Test
     fun `handleRoundFinished sets gameOver when player reaches targetScore`() {
         service.startGame(players, GameConfig(maxRounds = 10, targetScore = 0))
         val gameState = getInternalGameState(service)
@@ -883,6 +968,29 @@ class GameServiceTest {
 
         // targetScore = 0 means any score >= 0 triggers game over
         assertTrue(result.gameOver)
+    }
+
+    @Test
+    fun `handleRoundFinished records final stats once when game is over`() {
+        val dataSource = SingleConnectionDataSource("jdbc:sqlite::memory:", true)
+        val jdbc = JdbcTemplate(dataSource)
+        val authRepository = AuthRepository(jdbc)
+        val statsRepository = StatsRepository(jdbc)
+        authRepository.initSchema()
+        statsRepository.initSchema()
+        authRepository.createUser(player1Id, "Alice", "hash-1", now = 1L)
+        authRepository.createUser(player2Id, "Bob", "hash-2", now = 1L)
+        val statsService = StatsService(statsRepository, authRepository, nowProvider = { 1_000L })
+        service = GameService(engine, gameRepository = null, statsService = statsService)
+        service.startGame(players, GameConfig(maxRounds = 1))
+        val gameState = getInternalGameState(service)
+        val finishedState = engine.finishRound(gameState.copy(finisherPlayerId = gameState.currentPlayerId!!))
+
+        service.handleRoundFinished(finishedState)
+        service.handleRoundFinished(finishedState)
+
+        assertEquals(1, statsRepository.findStats(player1Id)?.gamesPlayed)
+        assertEquals(1, statsRepository.findStats(player2Id)?.gamesPlayed)
     }
 
     // ── getCurrentState ───────────────────────────────────────────────────

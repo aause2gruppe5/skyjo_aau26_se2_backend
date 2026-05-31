@@ -43,9 +43,32 @@ class GameRepositoryTest {
     }
 
     @Test
+    fun `saveGame and loadActiveGames return multiple active games with lobby ids`() {
+        repo.saveGame("game-1", "lobby-1", GameState(phase = GamePhase.AWAITING_DRAW))
+        repo.saveGame("game-2", "lobby-2", GameState(phase = GamePhase.AWAITING_REPLACEMENT))
+        repo.saveGame("game-3", "lobby-3", GameState(phase = GamePhase.NOT_STARTED))
+        repo.saveGame("game-4", "lobby-4", GameState(phase = GamePhase.ROUND_FINISHED))
+        repo.saveGame("game-5", "lobby-5", GameState(phase = GamePhase.AWAITING_DRAW), completed = true)
+
+        val loaded = repo.loadActiveGames()
+
+        assertEquals(setOf("game-1", "game-2"), loaded.map { it.gameId }.toSet())
+        assertEquals("lobby-1", loaded.first { it.gameId == "game-1" }.lobbyId)
+        assertEquals(GamePhase.AWAITING_REPLACEMENT, loaded.first { it.gameId == "game-2" }.state.phase)
+    }
+
+    @Test
     fun `loadActiveGame ignores NOT_STARTED games`() {
         val state = GameState(phase = GamePhase.NOT_STARTED)
         repo.saveGame("game-not-started", state)
+
+        assertNull(repo.loadActiveGame())
+    }
+
+    @Test
+    fun `loadActiveGame ignores ROUND_FINISHED games`() {
+        val state = GameState(phase = GamePhase.ROUND_FINISHED)
+        repo.saveGame("game-finished-round", state)
 
         assertNull(repo.loadActiveGame())
     }
@@ -102,6 +125,7 @@ class GameRepositoryTest {
 
     @Test
     fun `savePlayerSession creates new session`() {
+        repo.saveGame("game-1", GameState(phase = GamePhase.AWAITING_DRAW))
         repo.savePlayerSession("player-1", "game-1", connected = true)
 
         assertEquals("game-1", repo.getPlayerGame("player-1"))
@@ -109,6 +133,8 @@ class GameRepositoryTest {
 
     @Test
     fun `savePlayerSession updates existing session`() {
+        repo.saveGame("game-1", GameState(phase = GamePhase.AWAITING_DRAW))
+        repo.saveGame("game-2", GameState(phase = GamePhase.AWAITING_REPLACEMENT))
         repo.savePlayerSession("player-1", "game-1", connected = true)
         repo.savePlayerSession("player-1", "game-2", connected = false)
 
@@ -122,10 +148,43 @@ class GameRepositoryTest {
 
     @Test
     fun `markDisconnected updates existing session`() {
+        repo.saveGame("game-1", GameState(phase = GamePhase.AWAITING_DRAW))
         repo.savePlayerSession("player-1", "game-1", connected = true)
         repo.markDisconnected("player-1")
 
         assertEquals("game-1", repo.getPlayerGame("player-1"))
+    }
+
+    @Test
+    fun `getPlayerGame ignores inactive games`() {
+        repo.saveGame("game-not-started", GameState(phase = GamePhase.NOT_STARTED))
+        repo.saveGame("game-round-finished", GameState(phase = GamePhase.ROUND_FINISHED))
+        repo.saveGame("game-completed", GameState(phase = GamePhase.AWAITING_DRAW), completed = true)
+
+        repo.savePlayerSession("player-1", "game-not-started", connected = true)
+        repo.savePlayerSession("player-2", "game-round-finished", connected = true)
+        repo.savePlayerSession("player-3", "game-completed", connected = true)
+        repo.savePlayerSession("player-4", "game-missing", connected = true)
+
+        assertNull(repo.getPlayerGame("player-1"))
+        assertNull(repo.getPlayerGame("player-2"))
+        assertNull(repo.getPlayerGame("player-3"))
+        assertNull(repo.getPlayerGame("player-4"))
+    }
+
+    @Test
+    fun `deletePlayerSessionsForGame removes completed game sessions`() {
+        repo.saveGame("game-1", GameState(phase = GamePhase.AWAITING_DRAW))
+        repo.saveGame("game-2", GameState(phase = GamePhase.AWAITING_DRAW))
+        repo.savePlayerSession("player-1", "game-1", connected = true)
+        repo.savePlayerSession("player-2", "game-1", connected = true)
+        repo.savePlayerSession("player-3", "game-2", connected = true)
+
+        repo.deletePlayerSessionsForGame("game-1")
+
+        assertNull(repo.getPlayerGame("player-1"))
+        assertNull(repo.getPlayerGame("player-2"))
+        assertEquals("game-2", repo.getPlayerGame("player-3"))
     }
 
     @Test
