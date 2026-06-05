@@ -23,4 +23,5 @@ enum class ActionType {
     DISCARD_AND_REVEAL,
     PLAY_ACTION_CARD,
     DISCARD_ACTION_CARD,
+    START_NEXT_ROUND,
 }
