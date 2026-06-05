@@ -159,11 +159,38 @@ class GameService @Autowired constructor(
         val state = game.gameState
         val resolvedPlayerId = game.sessionAliases[playerId] ?: playerId
 
+        // Nächste Runde durch Host starten
+        if (action.type == ActionType.START_NEXT_ROUND) {
+            if (game.gameState.phase != GamePhase.ROUND_FINISHED || game.completed) {
+                error("Cannot start next round right now")
+            }
+
+            // Prüfen, ob der Sender wirklich der Host (Spieler 1) ist
+            val hostId = game.gameState.players.firstOrNull()?.id
+            if (resolvedPlayerId != hostId) {
+                error("Only the host can start the next round")
+            }
+
+            // Alles okay, neue Runde starten!
+            game.roundNumber++
+            val playerIds = game.gameState.players.map { it.id }
+            val initialReveals = playerIds.associateWith { setOf(BoardPosition(0, 0), BoardPosition(0, 1)) }
+            val newRoundState = engine.startGame(playerIds, initialReveals)
+
+            game.gameState = newRoundState
+            gameRepository?.saveGame(game.gameId, game.lobbyId, newRoundState)
+            syncLegacyIfCurrent(game)
+
+            // Frühzeitig zurückkehren, restliche Zug-Logik überspringen
+            return@withLock toUpdateMessage(game, newRoundState, gameOver = false)
+        }
+
         if (state.currentPlayerId != resolvedPlayerId) {
             error("not your turn (current player: ${state.currentPlayerId})")
         }
 
         val updatedState = when (action.type) {
+            ActionType.START_NEXT_ROUND -> error("Already handled above")
             ActionType.DRAW -> {
                 when (action.source ?: error("source required for DRAW action")) {
                     DrawSource.DECK -> engine.drawFromDeck(state)
@@ -335,15 +362,10 @@ class GameService @Autowired constructor(
             syncLegacyIfCurrent(game)
             return toUpdateMessage(game, finishedState, gameOver = true)
         }
-
-        game.roundNumber++
-        val playerIds = finishedState.players.map { it.id }
-        val initialReveals = playerIds.associateWith { setOf(BoardPosition(0, 0), BoardPosition(0, 1)) }
-        val newRoundState = engine.startGame(playerIds, initialReveals)
-        game.gameState = newRoundState
-        gameRepository?.saveGame(game.gameId, game.lobbyId, newRoundState)
+        //"Handbremse" zum anzeigen der Rundenergebnisse
+        gameRepository?.saveGame(game.gameId, game.lobbyId, finishedState)
         syncLegacyIfCurrent(game)
-        return toUpdateMessage(game, newRoundState, gameOver = false)
+        return toUpdateMessage(game, finishedState, gameOver = false)
     }
 
     private fun currentManagedGame(): ManagedGame? =
