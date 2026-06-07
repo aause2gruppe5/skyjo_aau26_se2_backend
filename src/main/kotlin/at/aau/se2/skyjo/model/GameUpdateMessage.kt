@@ -65,3 +65,8 @@ data class PlayerScoreDto(
     val nickname: String,
     val totalScore: Int,
 )
+
+data class CheatPeekResultMessage(
+    val card: CardDto,
+    val remainingCheatPeeks: Int,
+)

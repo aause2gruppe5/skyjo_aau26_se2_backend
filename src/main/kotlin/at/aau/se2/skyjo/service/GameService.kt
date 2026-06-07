@@ -22,6 +22,7 @@ import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.BoardSlotDto
 import at.aau.se2.skyjo.model.CardDto
 import at.aau.se2.skyjo.model.CardType
+import at.aau.se2.skyjo.model.CheatPeekResultMessage
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameConfig
 import at.aau.se2.skyjo.model.GameUpdateMessage
@@ -37,6 +38,8 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+
+private const val MAX_CHEAT_PEEKS_PER_PLAYER = 3
 
 @Service
 class GameService @Autowired constructor(
@@ -54,6 +57,7 @@ class GameService @Autowired constructor(
         var totalScores: Map<String, Int>,
         var playerInfo: Map<String, String>,
         var completed: Boolean = false,
+        val cheatPeekCounts: MutableMap<String, Int> = mutableMapOf(),
         val sessionAliases: MutableMap<String, String> = mutableMapOf(),
         val disconnectedNicknames: MutableSet<String> = mutableSetOf(),
     )
@@ -69,6 +73,7 @@ class GameService @Autowired constructor(
     private var roundNumber: Int = 0
     private var totalScores: Map<String, Int> = emptyMap()
     private var playerInfo: Map<String, String> = emptyMap()
+    private val cheatPeekCounts: MutableMap<String, Int> = mutableMapOf()
     private val sessionAliases: MutableMap<String, String> = mutableMapOf()
     private val disconnectedNicknames: MutableSet<String> = mutableSetOf()
 
@@ -284,6 +289,37 @@ class GameService @Autowired constructor(
         )
     }
 
+    fun cheatPeekDrawPile(playerId: String): CheatPeekResultMessage = lock.withLock {
+        val game = findManagedGameForPlayer(playerId) ?: error("game has not started yet")
+        syncManagedFromLegacyIfCurrent(game)
+        if (game.completed) {
+            error("game is already completed")
+        }
+
+        val resolvedPlayerId = game.sessionAliases[playerId] ?: playerId
+        val state = game.gameState
+        if (state.currentPlayerId != resolvedPlayerId) {
+            error("not your turn (current player: ${state.currentPlayerId})")
+        }
+
+        val usedPeeks = game.cheatPeekCounts[resolvedPlayerId] ?: 0
+        if (usedPeeks >= MAX_CHEAT_PEEKS_PER_PLAYER) {
+            error("no cheat peeks left")
+        }
+
+        val peekResult = engine.peekTopDrawCard(state)
+        val updatedUsedPeeks = usedPeeks + 1
+        game.cheatPeekCounts[resolvedPlayerId] = updatedUsedPeeks
+        game.gameState = peekResult.state
+        gameRepository?.saveGame(game.gameId, game.lobbyId, peekResult.state)
+        syncLegacyIfCurrent(game)
+
+        CheatPeekResultMessage(
+            card = toCardDto(peekResult.card),
+            remainingCheatPeeks = MAX_CHEAT_PEEKS_PER_PLAYER - updatedUsedPeeks,
+        )
+    }
+
     fun getCurrentState(): GameUpdateMessage? = lock.withLock {
         currentManagedGame()?.let { game ->
             syncManagedFromLegacyIfCurrent(game)
@@ -408,6 +444,7 @@ class GameService @Autowired constructor(
                 roundNumber = roundNumber.takeIf { it > 0 } ?: 1,
                 totalScores = totalScores.ifEmpty { playerIds.associateWith { 0 } },
                 playerInfo = playerInfo.ifEmpty { playerIds.associateWith { it } },
+                cheatPeekCounts = cheatPeekCounts.toMutableMap(),
                 sessionAliases = sessionAliases.toMutableMap(),
                 disconnectedNicknames = disconnectedNicknames.toMutableSet(),
             )
@@ -424,6 +461,8 @@ class GameService @Autowired constructor(
         roundNumber = game.roundNumber
         totalScores = game.totalScores
         playerInfo = game.playerInfo
+        cheatPeekCounts.clear()
+        cheatPeekCounts.putAll(game.cheatPeekCounts)
         sessionAliases.clear()
         sessionAliases.putAll(game.sessionAliases)
         disconnectedNicknames.clear()
@@ -439,6 +478,8 @@ class GameService @Autowired constructor(
         game.roundNumber = roundNumber
         game.totalScores = totalScores.ifEmpty { game.totalScores }
         game.playerInfo = playerInfo.ifEmpty { game.playerInfo }
+        game.cheatPeekCounts.clear()
+        game.cheatPeekCounts.putAll(cheatPeekCounts)
         game.sessionAliases.clear()
         game.sessionAliases.putAll(sessionAliases)
         game.disconnectedNicknames.clear()
@@ -519,6 +560,7 @@ class GameService @Autowired constructor(
             roundNumber = roundNumber,
             totalScores = totalScores,
             playerInfo = playerInfo,
+            cheatPeekCounts = cheatPeekCounts.toMutableMap(),
             sessionAliases = sessionAliases.toMutableMap(),
             disconnectedNicknames = disconnectedNicknames.toMutableSet(),
         )
