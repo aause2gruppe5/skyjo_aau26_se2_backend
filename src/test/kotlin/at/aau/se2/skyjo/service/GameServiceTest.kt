@@ -156,6 +156,28 @@ class GameServiceTest {
     }
 
     @Test
+    fun `cheatPeekDrawPile throws when game has not started`() {
+        val exception = assertThrows<IllegalStateException> {
+            service.cheatPeekDrawPile(player1Id)
+        }
+
+        assertTrue(exception.message!!.contains("not started"))
+    }
+
+    @Test
+    fun `cheatPeekDrawPile throws when it is not the player's turn`() {
+        val game = service.startGame(players)
+        val currentPlayerId = game.currentPlayerId!!
+        val otherPlayerId = if (currentPlayerId == player1Id) player2Id else player1Id
+
+        val exception = assertThrows<IllegalStateException> {
+            service.cheatPeekDrawPile(otherPlayerId)
+        }
+
+        assertTrue(exception.message!!.contains("not your turn"))
+    }
+
+    @Test
     fun `startGame clears disconnected players from previous game`() {
         service.startGame(players)
         service.markPlayerDisconnected(player1Id)

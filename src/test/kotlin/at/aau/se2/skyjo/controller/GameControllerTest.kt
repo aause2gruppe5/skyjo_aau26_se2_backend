@@ -7,6 +7,9 @@ import at.aau.se2.skyjo.game.model.BoardLineTargetType
 import at.aau.se2.skyjo.model.ActionCardResultMessage
 import at.aau.se2.skyjo.model.ActionCardResultType
 import at.aau.se2.skyjo.model.ActionType
+import at.aau.se2.skyjo.model.CardDto
+import at.aau.se2.skyjo.model.CardType
+import at.aau.se2.skyjo.model.CheatPeekResultMessage
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameUpdateMessage
 import at.aau.se2.skyjo.model.PlayActionCardMessageResult
@@ -66,7 +69,7 @@ class GameControllerTest {
 
         controller.gameAction(action, headerWithUser("p1"))
 
-        verify(messagingTemplate).convertAndSendToUser(eq("p1"), eq("/queue/errors"), any())
+        verify(messagingTemplate).convertAndSendToUser(eq("p1"), eq("/queue/errors"), any<Any>())
     }
 
     @Test
@@ -78,6 +81,39 @@ class GameControllerTest {
 
         verify(gameService, never()).processAction(any(), any())
         verify(messagingTemplate, never()).convertAndSend(any<String>(), any<Any>())
+    }
+
+    @Test
+    fun `cheatPeekDrawPile sends private result to acting user`() {
+        val result = CheatPeekResultMessage(
+            card = CardDto(id = 7, value = 4, type = CardType.NUMBER),
+            remainingCheatPeeks = 2,
+        )
+        whenever(gameService.cheatPeekDrawPile("p1")).thenReturn(result)
+
+        controller.cheatPeekDrawPile(headerWithUser("p1"))
+
+        verify(messagingTemplate).convertAndSendToUser("p1", "/queue/cheat-peek-results", result)
+    }
+
+    @Test
+    fun `cheatPeekDrawPile sends error to player when service throws`() {
+        whenever(gameService.cheatPeekDrawPile("p1")).thenThrow(IllegalStateException("no cheat peeks left"))
+
+        controller.cheatPeekDrawPile(headerWithUser("p1"))
+
+        verify(messagingTemplate).convertAndSendToUser(eq("p1"), eq("/queue/errors"), any())
+        verify(messagingTemplate, never()).convertAndSendToUser(eq("p1"), eq("/queue/cheat-peek-results"), any<Any>())
+    }
+
+    @Test
+    fun `cheatPeekDrawPile does nothing when user principal is missing`() {
+        val header = SimpMessageHeaderAccessor.create()
+
+        controller.cheatPeekDrawPile(header)
+
+        verify(gameService, never()).cheatPeekDrawPile(any())
+        verify(messagingTemplate, never()).convertAndSendToUser(any<String>(), any<String>(), any<Any>())
     }
 
     @Test
