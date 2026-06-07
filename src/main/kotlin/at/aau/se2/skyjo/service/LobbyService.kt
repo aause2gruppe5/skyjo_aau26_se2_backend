@@ -190,6 +190,9 @@ class LobbyService(
 
     fun startGame(userId: String, lobbyId: String): LobbyState = lock.withLock {
         val lobby = getLobbyById(lobbyId) ?: error("lobby not found")
+        if (lobby.status != LobbyStatus.WAITING) {
+            error("cannot start game: lobby is not waiting")
+        }
         val caller = lobby.players.find { it.userId == userId } ?: error("player not in lobby")
         if (!caller.isHost) {
             error("only the host can start the game")
@@ -202,6 +205,13 @@ class LobbyService(
             ?: run { inMemoryLobbies[lobbyId] = lobby.copy(status = LobbyStatus.IN_GAME) }
 
         getLobbyById(lobbyId) ?: error("started lobby is not available")
+    }
+
+    fun closeLobby(lobbyId: String): LobbyState? = lock.withLock {
+        val lobby = getLobbyById(lobbyId) ?: return@withLock null
+        repository?.updateLobbyStatus(lobbyId, LobbyStatus.CLOSED, nowProvider())
+            ?: run { inMemoryLobbies[lobbyId] = lobby.copy(status = LobbyStatus.CLOSED) }
+        getLobbyById(lobbyId) ?: lobby.copy(status = LobbyStatus.CLOSED)
     }
 
     fun getLobbyById(lobbyId: String): LobbyState? = lock.withLock {
