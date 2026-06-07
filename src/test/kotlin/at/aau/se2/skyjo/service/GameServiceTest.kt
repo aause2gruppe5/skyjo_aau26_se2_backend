@@ -275,6 +275,49 @@ class GameServiceTest {
         assertTrue(ex.message!!.contains("actionCardIndex required"))
     }
 
+    // ── processAction – START_NEXT_ROUND ──────────────────────────────────
+
+    @Test
+    fun `processAction START_NEXT_ROUND throws when phase is not ROUND_FINISHED`() {
+        service.startGame(players)
+        // Standardmäßig startet das Spiel in AWAITING_DRAW
+
+        val ex = assertThrows<IllegalStateException> {
+            service.processAction(player1Id, GameActionMessage(ActionType.START_NEXT_ROUND))
+        }
+        assertTrue(ex.message!!.contains("Cannot start next round right now"))
+    }
+
+    @Test
+    fun `processAction START_NEXT_ROUND throws when non-host tries to start`() {
+        service.startGame(players)
+        // Setze die Phase manuell auf ROUND_FINISHED, um den ersten Check zu passieren
+        val state = getInternalGameState(service).copy(phase = GamePhase.ROUND_FINISHED)
+        setInternalGameState(service, state)
+
+        // player2Id ist nicht der Host
+        val ex = assertThrows<IllegalStateException> {
+            service.processAction(player2Id, GameActionMessage(ActionType.START_NEXT_ROUND))
+        }
+        assertTrue(ex.message!!.contains("Only the host can start the next round"))
+    }
+
+    @Test
+    fun `processAction START_NEXT_ROUND succeeds for host and starts new round`() {
+        service.startGame(players)
+        // Setze die Phase manuell auf ROUND_FINISHED, damit die Runde beendet ist
+        val state = getInternalGameState(service).copy(phase = GamePhase.ROUND_FINISHED)
+        setInternalGameState(service, state)
+
+        // player1Id ist der Host (isHost = true)
+        val result = service.processAction(player1Id, GameActionMessage(ActionType.START_NEXT_ROUND))
+
+        // Überprüfe, ob die Runde inkrementiert wurde und das Board zurückgesetzt ist
+        assertEquals(2, result.roundNumber)
+        assertEquals(GamePhase.AWAITING_DRAW, result.phase)
+        assertFalse(result.gameOver)
+    }
+
     // ── processAction – normal flow ───────────────────────────────────────
 
     @Test
@@ -910,7 +953,7 @@ class GameServiceTest {
     }
 
     @Test
-    fun `handleRoundFinished starts new round when maxRounds not reached`() {
+    fun `handleRoundFinished stays in ROUND_FINISHED when maxRounds not reached`() {
         service.startGame(players, GameConfig(maxRounds = 2, targetScore = 1000))
         val gameState = getInternalGameState(service)
         val currentPlayerId = gameState.currentPlayerId!!
@@ -918,8 +961,12 @@ class GameServiceTest {
 
         val result = service.handleRoundFinished(finishedState)
 
-        assertEquals(GamePhase.AWAITING_DRAW, result.phase)
-        assertEquals(2, result.roundNumber)
+        // Die Phase muss nun ROUND_FINISHED sein, da wir auf den Host warten
+        assertEquals(GamePhase.ROUND_FINISHED, result.phase)
+
+        // Die Rundennummer wird erst im START_NEXT_ROUND Block erhöht, bleibt hier also 1
+        assertEquals(1, result.roundNumber)
+
         assertFalse(result.gameOver)
     }
 

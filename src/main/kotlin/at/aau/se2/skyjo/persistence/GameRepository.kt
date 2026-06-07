@@ -108,7 +108,7 @@ class GameRepository(private val jdbc: JdbcTemplate) {
     fun loadActiveGames(): List<PersistedGame> {
         return try {
             jdbc.query(
-                "SELECT game_id, lobby_id, state_json FROM games WHERE completed = 0 AND phase != ? AND phase != ? ORDER BY updated_at ASC",
+                "SELECT game_id, lobby_id, state_json FROM games WHERE completed = 0 AND phase != ? ORDER BY updated_at ASC",
                 { rs, _ ->
                     PersistedGame(
                         gameId = rs.getString("game_id"),
@@ -116,8 +116,7 @@ class GameRepository(private val jdbc: JdbcTemplate) {
                         state = mapper.readValue(rs.getString("state_json"), GameState::class.java),
                     )
                 },
-                GamePhase.NOT_STARTED.name,
-                GamePhase.ROUND_FINISHED.name
+                GamePhase.NOT_STARTED.name // WICHTIG: Hier darf nur noch DIESER EINE Parameter stehen!
             )
         } catch (_: Exception) {
             emptyList()
@@ -159,12 +158,10 @@ class GameRepository(private val jdbc: JdbcTemplate) {
                 WHERE player_sessions.player_name = ?
                   AND games.completed = 0
                   AND games.phase != ?
-                  AND games.phase != ?
                 """.trimIndent(),
                 { rs, _ -> rs.getString("game_id") },
                 playerName,
-                GamePhase.NOT_STARTED.name,
-                GamePhase.ROUND_FINISHED.name
+                GamePhase.NOT_STARTED.name
             ).firstOrNull()
         } catch (_: Exception) {
             null
