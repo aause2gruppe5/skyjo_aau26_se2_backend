@@ -126,6 +126,36 @@ class GameServiceTest {
     }
 
     @Test
+    fun `cheatPeekDrawPile reveals top draw card privately without consuming turn`() {
+        val game = service.startGame(players)
+        val currentPlayerId = game.currentPlayerId!!
+
+        val peek = service.cheatPeekDrawPile(currentPlayerId)
+        val stateAfterPeek = service.getCurrentState(currentPlayerId)!!
+
+        assertNotNull(peek.card.value)
+        assertEquals(2, peek.remainingCheatPeeks)
+        assertEquals(GamePhase.AWAITING_DRAW, stateAfterPeek.phase)
+        assertEquals(currentPlayerId, stateAfterPeek.currentPlayerId)
+        assertNull(stateAfterPeek.drawnCard)
+    }
+
+    @Test
+    fun `cheatPeekDrawPile is limited to three uses per player`() {
+        val game = service.startGame(players)
+        val currentPlayerId = game.currentPlayerId!!
+
+        assertEquals(2, service.cheatPeekDrawPile(currentPlayerId).remainingCheatPeeks)
+        assertEquals(1, service.cheatPeekDrawPile(currentPlayerId).remainingCheatPeeks)
+        assertEquals(0, service.cheatPeekDrawPile(currentPlayerId).remainingCheatPeeks)
+
+        val exception = assertThrows<IllegalStateException> {
+            service.cheatPeekDrawPile(currentPlayerId)
+        }
+        assertTrue(exception.message!!.contains("no cheat peeks left"))
+    }
+
+    @Test
     fun `startGame clears disconnected players from previous game`() {
         service.startGame(players)
         service.markPlayerDisconnected(player1Id)
