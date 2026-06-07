@@ -211,4 +211,24 @@ class LobbyServiceTest {
         val newLobby = service.createLobby(authUser("user-a", "Alice"))
         assertNotNull(newLobby.lobbyId)
     }
+
+    @Test
+    fun `closeLobby clears in-memory current lobby mappings`() {
+        val oldLobby = service.createLobby(authUser("user-a", "Alice"))
+        val oldLobbyId = oldLobby.lobbyId!!
+        service.joinLobby(authUser("user-b", "Bob"), oldLobby.joinCode!!)
+        service.closeLobby(oldLobbyId)
+        val newLobby = service.createLobby(authUser("user-c", "Cara"))
+
+        val joined = service.joinLobby(authUser("user-a", "Alice"), newLobby.joinCode!!)
+
+        assertEquals(LobbyStatus.CLOSED, service.getLobbyById(oldLobbyId)?.status)
+        assertNull(service.getCurrentLobbyForUser("user-b"))
+        assertEquals(newLobby.lobbyId, joined.lobbyId)
+    }
+
+    @Test
+    fun `closeLobby returns null for unknown lobby`() {
+        assertNull(service.closeLobby("missing-lobby"))
+    }
 }

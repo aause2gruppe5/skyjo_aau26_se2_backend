@@ -210,8 +210,11 @@ class LobbyService(
     fun closeLobby(lobbyId: String): LobbyState? = lock.withLock {
         val lobby = getLobbyById(lobbyId) ?: return@withLock null
         repository?.updateLobbyStatus(lobbyId, LobbyStatus.CLOSED, nowProvider())
-            ?: run { inMemoryLobbies[lobbyId] = lobby.copy(status = LobbyStatus.CLOSED) }
-        getLobbyById(lobbyId) ?: lobby.copy(status = LobbyStatus.CLOSED)
+            ?: run {
+                lobby.players.map { it.userId }.forEach(inMemoryUserLobbyIds::remove)
+                inMemoryLobbies[lobbyId] = lobby.copy(status = LobbyStatus.CLOSED)
+            }
+        getLobbyById(lobbyId)
     }
 
     fun getLobbyById(lobbyId: String): LobbyState? = lock.withLock {
