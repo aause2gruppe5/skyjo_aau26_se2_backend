@@ -19,6 +19,7 @@ data class GameUpdateMessage(
     val gameId: String? = null,
     val lobbyId: String? = null,
     val disconnectedPlayers: List<String> = emptyList(),
+    val turnId: Int = 0,
 )
 
 data class PlayerBoardDto(
@@ -26,6 +27,7 @@ data class PlayerBoardDto(
     val nickname: String,
     val board: List<List<BoardSlotDto>>,
     val actionCards: List<ActionCardDto> = emptyList(),
+    val remainingCheatReports: Int = 3,
 )
 
 data class BoardSlotDto(
@@ -69,4 +71,18 @@ data class PlayerScoreDto(
 data class CheatPeekResultMessage(
     val card: CardDto,
     val remainingCheatPeeks: Int,
+)
+
+data class CheatReportResultMessage(
+    val successful: Boolean,
+    val reporterPlayerId: String,
+    val targetPlayerId: String,
+    val penaltyPlayerId: String,
+    val penaltyPoints: Int,
+    val remainingCheatReports: Int,
+)
+
+data class CheatReportMessageResult(
+    val gameUpdate: GameUpdateMessage,
+    val privateReportResult: CheatReportResultMessage,
 )
