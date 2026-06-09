@@ -10,6 +10,8 @@ import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.CardDto
 import at.aau.se2.skyjo.model.CardType
 import at.aau.se2.skyjo.model.CheatPeekResultMessage
+import at.aau.se2.skyjo.model.CheatReportMessageResult
+import at.aau.se2.skyjo.model.CheatReportResultMessage
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameUpdateMessage
 import at.aau.se2.skyjo.model.PlayActionCardMessageResult
@@ -102,7 +104,7 @@ class GameControllerTest {
 
         controller.cheatPeekDrawPile(headerWithUser("p1"))
 
-        verify(messagingTemplate).convertAndSendToUser(eq("p1"), eq("/queue/errors"), any())
+        verify(messagingTemplate).convertAndSendToUser(eq("p1"), eq("/queue/errors"), any<Any>())
         verify(messagingTemplate, never()).convertAndSendToUser(eq("p1"), eq("/queue/cheat-peek-results"), any<Any>())
     }
 
@@ -113,6 +115,50 @@ class GameControllerTest {
         controller.cheatPeekDrawPile(header)
 
         verify(gameService, never()).cheatPeekDrawPile(any())
+        verify(messagingTemplate, never()).convertAndSendToUser(any<String>(), any<String>(), any<Any>())
+    }
+
+    @Test
+    fun `cheatReportCurrentPlayer broadcasts update and sends private result to reporter`() {
+        val update = stubGameUpdate()
+        val privateResult = CheatReportResultMessage(
+            successful = true,
+            reporterPlayerId = "p2",
+            targetPlayerId = "p1",
+            penaltyPlayerId = "p1",
+            penaltyPoints = 10,
+            remainingCheatReports = 2,
+        )
+        whenever(gameService.cheatReportCurrentPlayer("p2")).thenReturn(
+            CheatReportMessageResult(
+                gameUpdate = update,
+                privateReportResult = privateResult,
+            ),
+        )
+
+        controller.cheatReportCurrentPlayer(headerWithUser("p2"))
+
+        verify(messagingTemplate).convertAndSend("/topic/games/game-1", update)
+        verify(messagingTemplate).convertAndSendToUser("p2", "/queue/cheat-report-results", privateResult)
+    }
+
+    @Test
+    fun `cheatReportCurrentPlayer sends error to player when service throws`() {
+        whenever(gameService.cheatReportCurrentPlayer("p2")).thenThrow(IllegalStateException("no cheat reports left"))
+
+        controller.cheatReportCurrentPlayer(headerWithUser("p2"))
+
+        verify(messagingTemplate).convertAndSendToUser(eq("p2"), eq("/queue/errors"), any<Any>())
+        verify(messagingTemplate, never()).convertAndSendToUser(eq("p2"), eq("/queue/cheat-report-results"), any<Any>())
+    }
+
+    @Test
+    fun `cheatReportCurrentPlayer does nothing when user principal is missing`() {
+        val header = SimpMessageHeaderAccessor.create()
+
+        controller.cheatReportCurrentPlayer(header)
+
+        verify(gameService, never()).cheatReportCurrentPlayer(any())
         verify(messagingTemplate, never()).convertAndSendToUser(any<String>(), any<String>(), any<Any>())
     }
 
@@ -150,7 +196,7 @@ class GameControllerTest {
 
         controller.playActionCard(command, headerWithUser("p1"))
 
-        verify(messagingTemplate).convertAndSendToUser(eq("p1"), eq("/queue/errors"), any())
+        verify(messagingTemplate).convertAndSendToUser(eq("p1"), eq("/queue/errors"), any<Any>())
         verify(messagingTemplate, never()).convertAndSend(eq("/topic/game"), any<Any>())
     }
 

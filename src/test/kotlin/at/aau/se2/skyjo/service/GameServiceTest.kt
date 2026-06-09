@@ -47,6 +47,22 @@ class GameServiceTest {
         service = GameService(engine, null)
     }
 
+    private fun otherPlayerId(playerId: String): String =
+        if (playerId == player1Id) player2Id else player1Id
+
+    private fun advanceTurnByDrawingActionCard() {
+        val currentPlayerId = service.getCurrentState()!!.currentPlayerId!!
+        service.processAction(currentPlayerId, GameActionMessage(ActionType.DRAW, source = DrawSource.ACTION_DECK))
+    }
+
+    private fun finishRoundForNextRound() {
+        val state = getInternalGameState(service).copy(phase = GamePhase.ROUND_FINISHED)
+        setInternalGameState(service, state)
+    }
+
+    private fun totalScoreOf(playerId: String): Int =
+        service.getCurrentState()!!.totalScores.first { it.playerId == playerId }.totalScore
+
     // ── startGame ──────────────────────────────────────────────────────────
 
     @Test
@@ -153,6 +169,118 @@ class GameServiceTest {
             service.cheatPeekDrawPile(currentPlayerId)
         }
         assertTrue(exception.message!!.contains("no cheat peeks left"))
+    }
+
+    @Test
+    fun `cheatPeekDrawPile limit resets when next round starts`() {
+        val game = service.startGame(players)
+        val currentPlayerId = game.currentPlayerId!!
+
+        repeat(3) { service.cheatPeekDrawPile(currentPlayerId) }
+        assertThrows<IllegalStateException> {
+            service.cheatPeekDrawPile(currentPlayerId)
+        }
+
+        finishRoundForNextRound()
+        val nextRound = service.processAction(player1Id, GameActionMessage(ActionType.START_NEXT_ROUND))
+        val nextCurrentPlayerId = nextRound.currentPlayerId!!
+
+        assertEquals(2, service.cheatPeekDrawPile(nextCurrentPlayerId).remainingCheatPeeks)
+    }
+
+    @Test
+    fun `cheatReportCurrentPlayer penalizes cheater when current player cheated this turn`() {
+        val game = service.startGame(players)
+        val cheaterId = game.currentPlayerId!!
+        val reporterId = otherPlayerId(cheaterId)
+
+        service.cheatPeekDrawPile(cheaterId)
+        val result = service.cheatReportCurrentPlayer(reporterId)
+
+        assertTrue(result.privateReportResult.successful)
+        assertEquals(cheaterId, result.privateReportResult.targetPlayerId)
+        assertEquals(cheaterId, result.privateReportResult.penaltyPlayerId)
+        assertEquals(10, result.privateReportResult.penaltyPoints)
+        assertEquals(2, result.privateReportResult.remainingCheatReports)
+        assertEquals(10, result.gameUpdate.totalScores.first { it.playerId == cheaterId }.totalScore)
+        assertEquals(2, result.gameUpdate.players.first { it.playerId == reporterId }.remainingCheatReports)
+    }
+
+    @Test
+    fun `cheatReportCurrentPlayer penalizes reporter when no cheat happened this turn`() {
+        val game = service.startGame(players)
+        val currentPlayerId = game.currentPlayerId!!
+        val reporterId = otherPlayerId(currentPlayerId)
+
+        val result = service.cheatReportCurrentPlayer(reporterId)
+
+        assertFalse(result.privateReportResult.successful)
+        assertEquals(currentPlayerId, result.privateReportResult.targetPlayerId)
+        assertEquals(reporterId, result.privateReportResult.penaltyPlayerId)
+        assertEquals(5, result.privateReportResult.penaltyPoints)
+        assertEquals(2, result.privateReportResult.remainingCheatReports)
+        assertEquals(5, result.gameUpdate.totalScores.first { it.playerId == reporterId }.totalScore)
+    }
+
+    @Test
+    fun `cheatReportCurrentPlayer rejects duplicate report in same turn without another penalty`() {
+        val game = service.startGame(players)
+        val currentPlayerId = game.currentPlayerId!!
+        val reporterId = otherPlayerId(currentPlayerId)
+
+        service.cheatReportCurrentPlayer(reporterId)
+        val exception = assertThrows<IllegalStateException> {
+            service.cheatReportCurrentPlayer(reporterId)
+        }
+
+        assertTrue(exception.message!!.contains("already reported"))
+        assertEquals(5, totalScoreOf(reporterId))
+        assertEquals(2, service.getCurrentState()!!.players.first { it.playerId == reporterId }.remainingCheatReports)
+    }
+
+    @Test
+    fun `cheatReportCurrentPlayer is limited to three reports per round`() {
+        val game = service.startGame(players)
+        val originalCurrentPlayerId = game.currentPlayerId!!
+        val reporterId = otherPlayerId(originalCurrentPlayerId)
+
+        repeat(3) { index ->
+            val result = service.cheatReportCurrentPlayer(reporterId)
+            assertEquals(2 - index, result.privateReportResult.remainingCheatReports)
+            advanceTurnByDrawingActionCard()
+            advanceTurnByDrawingActionCard()
+        }
+
+        val exception = assertThrows<IllegalStateException> {
+            service.cheatReportCurrentPlayer(reporterId)
+        }
+        assertTrue(exception.message!!.contains("no cheat reports left"))
+    }
+
+    @Test
+    fun `cheatReportCurrentPlayer report limit resets when next round starts`() {
+        val game = service.startGame(players)
+        val reporterId = otherPlayerId(game.currentPlayerId!!)
+
+        service.cheatReportCurrentPlayer(reporterId)
+        assertEquals(2, service.getCurrentState()!!.players.first { it.playerId == reporterId }.remainingCheatReports)
+
+        finishRoundForNextRound()
+        val nextRound = service.processAction(player1Id, GameActionMessage(ActionType.START_NEXT_ROUND))
+
+        assertTrue(nextRound.players.all { it.remainingCheatReports == 3 })
+    }
+
+    @Test
+    fun `cheatReportCurrentPlayer rejects reporting yourself`() {
+        val game = service.startGame(players)
+        val currentPlayerId = game.currentPlayerId!!
+
+        val exception = assertThrows<IllegalStateException> {
+            service.cheatReportCurrentPlayer(currentPlayerId)
+        }
+
+        assertTrue(exception.message!!.contains("cannot report yourself"))
     }
 
     @Test
