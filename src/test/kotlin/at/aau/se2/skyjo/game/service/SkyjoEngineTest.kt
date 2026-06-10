@@ -113,6 +113,56 @@ class SkyjoEngineTest {
     }
 
     @Nested
+    inner class PeekTopDrawCardTest {
+        @Test
+        fun peekTopDrawCardReturnsTopCardWithoutRemovingIt() {
+            val bottomCard = mockCard(id = 1, value = 1)
+            val topCard = mockCard(id = 2, value = 9)
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                drawPile = DrawPile(cards = listOf(bottomCard, topCard)),
+            )
+
+            val result = engine.peekTopDrawCard(state)
+
+            assertThat(result.card).isEqualTo(topCard)
+            assertThat(result.state.drawPile.cards).containsExactly(bottomCard, topCard)
+            assertThat(result.state.phase).isEqualTo(GamePhase.AWAITING_DRAW)
+        }
+
+        @Test
+        fun peekTopDrawCardCanReplenishAnEmptyDrawPile() {
+            val recycledCard = mockCard(id = 1, value = 3)
+            val protectedDiscardTop = mockCard(id = 2, value = 8)
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_DRAW,
+                drawPile = DrawPile.empty(),
+                discardPile = DiscardPile(listOf(recycledCard, protectedDiscardTop)),
+            )
+
+            val result = engine.peekTopDrawCard(state)
+
+            assertThat(result.card).isEqualTo(recycledCard)
+            assertThat(result.state.drawPile.cards).containsExactly(recycledCard)
+            assertThat(result.state.discardPile.cards).containsExactly(protectedDiscardTop)
+        }
+
+        @Test
+        fun peekTopDrawCardRejectsWrongPhase() {
+            val state = mockGameState(
+                phase = GamePhase.AWAITING_REPLACEMENT,
+                drawPile = DrawPile(cards = listOf(mockCard())),
+            )
+
+            val exception = assertThrows<InvalidMoveException> {
+                engine.peekTopDrawCard(state)
+            }
+
+            assertThat(exception).hasMessageContaining("cannot peek at draw pile while phase is")
+        }
+    }
+
+    @Nested
     inner class TakeDiscardTest{
         @Test
         fun cardOnTopIsTakenPhaseAwaitingDraw(){

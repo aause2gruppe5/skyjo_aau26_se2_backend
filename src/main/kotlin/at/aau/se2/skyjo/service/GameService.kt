@@ -22,6 +22,9 @@ import at.aau.se2.skyjo.model.ActionType
 import at.aau.se2.skyjo.model.BoardSlotDto
 import at.aau.se2.skyjo.model.CardDto
 import at.aau.se2.skyjo.model.CardType
+import at.aau.se2.skyjo.model.CheatPeekResultMessage
+import at.aau.se2.skyjo.model.CheatReportMessageResult
+import at.aau.se2.skyjo.model.CheatReportResultMessage
 import at.aau.se2.skyjo.model.GameActionMessage
 import at.aau.se2.skyjo.model.GameConfig
 import at.aau.se2.skyjo.model.GameUpdateMessage
@@ -37,6 +40,11 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+
+private const val MAX_CHEAT_PEEKS_PER_PLAYER = 3
+private const val MAX_CHEAT_REPORTS_PER_PLAYER = 3
+private const val SUCCESSFUL_CHEAT_REPORT_PENALTY = 10
+private const val FALSE_CHEAT_REPORT_PENALTY = 5
 
 @Service
 class GameService @Autowired constructor(
@@ -55,6 +63,13 @@ class GameService @Autowired constructor(
         var totalScores: Map<String, Int>,
         var playerInfo: Map<String, String>,
         var completed: Boolean = false,
+        val cheatPeekCounts: MutableMap<String, Int> = mutableMapOf(),
+        val reportCounts: MutableMap<String, Int> = mutableMapOf(),
+        var turnId: Int = 0,
+        var reportTurnPlayerId: String? = gameState.currentPlayerId,
+        var playerCheatedThisTurn: Boolean = false,
+        var cheatReportedThisTurn: Boolean = false,
+        val reportersThisTurn: MutableSet<String> = mutableSetOf(),
         val sessionAliases: MutableMap<String, String> = mutableMapOf(),
         val disconnectedNicknames: MutableSet<String> = mutableSetOf(),
     )
@@ -70,6 +85,13 @@ class GameService @Autowired constructor(
     private var roundNumber: Int = 0
     private var totalScores: Map<String, Int> = emptyMap()
     private var playerInfo: Map<String, String> = emptyMap()
+    private val cheatPeekCounts: MutableMap<String, Int> = mutableMapOf()
+    private val reportCounts: MutableMap<String, Int> = mutableMapOf()
+    private var turnId: Int = 0
+    private var reportTurnPlayerId: String? = null
+    private var playerCheatedThisTurn: Boolean = false
+    private var cheatReportedThisTurn: Boolean = false
+    private val reportersThisTurn: MutableSet<String> = mutableSetOf()
     private val sessionAliases: MutableMap<String, String> = mutableMapOf()
     private val disconnectedNicknames: MutableSet<String> = mutableSetOf()
 
@@ -179,6 +201,7 @@ class GameService @Autowired constructor(
             val newRoundState = engine.startGame(playerIds, initialReveals)
 
             game.gameState = newRoundState
+            resetCheatReportRound(game, newRoundState.currentPlayerId)
             gameRepository?.saveGame(game.gameId, game.lobbyId, newRoundState)
             syncLegacyIfCurrent(game)
 
@@ -243,6 +266,9 @@ class GameService @Autowired constructor(
         }
 
         game.gameState = updatedState
+        if (action.completesTurn()) {
+            advanceCheatReportTurn(game, updatedState.currentPlayerId)
+        }
         gameRepository?.saveGame(game.gameId, game.lobbyId, updatedState)
         syncLegacyIfCurrent(game)
 
@@ -270,6 +296,7 @@ class GameService @Autowired constructor(
         val updatedState = updatedStateWithResult.copy(actionCardResult = null)
 
         game.gameState = updatedState
+        advanceCheatReportTurn(game, updatedState.currentPlayerId)
         gameRepository?.saveGame(game.gameId, game.lobbyId, updatedState)
         syncLegacyIfCurrent(game)
 
@@ -282,6 +309,97 @@ class GameService @Autowired constructor(
         PlayActionCardMessageResult(
             gameUpdate = update,
             privateActionCardResults = privateResults,
+        )
+    }
+
+    fun cheatPeekDrawPile(playerId: String): CheatPeekResultMessage = lock.withLock {
+        val game = findManagedGameForPlayer(playerId) ?: error("game has not started yet")
+        syncManagedFromLegacyIfCurrent(game)
+        if (game.completed) {
+            error("game is already completed")
+        }
+
+        val resolvedPlayerId = game.sessionAliases[playerId] ?: playerId
+        ensureCheatReportTurn(game)
+        val state = game.gameState
+        if (state.currentPlayerId != resolvedPlayerId) {
+            error("not your turn (current player: ${state.currentPlayerId})")
+        }
+
+        val usedPeeks = game.cheatPeekCounts[resolvedPlayerId] ?: 0
+        if (usedPeeks >= MAX_CHEAT_PEEKS_PER_PLAYER) {
+            error("no cheat peeks left")
+        }
+
+        val peekResult = engine.peekTopDrawCard(state)
+        val updatedUsedPeeks = usedPeeks + 1
+        game.cheatPeekCounts[resolvedPlayerId] = updatedUsedPeeks
+        game.playerCheatedThisTurn = true
+        game.gameState = peekResult.state
+        gameRepository?.saveGame(game.gameId, game.lobbyId, peekResult.state)
+        syncLegacyIfCurrent(game)
+
+        CheatPeekResultMessage(
+            card = toCardDto(peekResult.card),
+            remainingCheatPeeks = MAX_CHEAT_PEEKS_PER_PLAYER - updatedUsedPeeks,
+        )
+    }
+
+    fun cheatReportCurrentPlayer(playerId: String): CheatReportMessageResult = lock.withLock {
+        val game = findManagedGameForPlayer(playerId) ?: error("game has not started yet")
+        syncManagedFromLegacyIfCurrent(game)
+        if (game.completed) {
+            error("game is already completed")
+        }
+
+        val reporterPlayerId = game.sessionAliases[playerId] ?: playerId
+        if (game.gameState.phase == GamePhase.NOT_STARTED || game.gameState.phase == GamePhase.ROUND_FINISHED) {
+            error("cannot report right now")
+        }
+        ensureCheatReportTurn(game)
+        val targetPlayerId = game.gameState.currentPlayerId ?: error("no active player to report")
+        if (targetPlayerId == reporterPlayerId) {
+            error("cannot report yourself")
+        }
+        if (reporterPlayerId in game.reportersThisTurn) {
+            error("already reported this turn")
+        }
+
+        val usedReports = game.reportCounts[reporterPlayerId] ?: 0
+        if (usedReports >= MAX_CHEAT_REPORTS_PER_PLAYER) {
+            error("no cheat reports left")
+        }
+
+        val updatedUsedReports = usedReports + 1
+        game.reportCounts[reporterPlayerId] = updatedUsedReports
+        game.reportersThisTurn.add(reporterPlayerId)
+
+        val successful = game.playerCheatedThisTurn && !game.cheatReportedThisTurn
+        val penaltyPlayerId: String
+        val penaltyPoints: Int
+        if (successful) {
+            game.cheatReportedThisTurn = true
+            penaltyPlayerId = targetPlayerId
+            penaltyPoints = SUCCESSFUL_CHEAT_REPORT_PENALTY
+        } else {
+            penaltyPlayerId = reporterPlayerId
+            penaltyPoints = FALSE_CHEAT_REPORT_PENALTY
+        }
+        addScorePenalty(game, penaltyPlayerId, penaltyPoints)
+        syncLegacyIfCurrent(game)
+
+        val privateResult = CheatReportResultMessage(
+            successful = successful,
+            reporterPlayerId = reporterPlayerId,
+            targetPlayerId = targetPlayerId,
+            penaltyPlayerId = penaltyPlayerId,
+            penaltyPoints = penaltyPoints,
+            remainingCheatReports = MAX_CHEAT_REPORTS_PER_PLAYER - updatedUsedReports,
+        )
+
+        CheatReportMessageResult(
+            gameUpdate = toUpdateMessage(game, game.gameState, gameOver = false),
+            privateReportResult = privateResult,
         )
     }
 
@@ -410,6 +528,13 @@ class GameService @Autowired constructor(
                 roundNumber = roundNumber.takeIf { it > 0 } ?: 1,
                 totalScores = totalScores.ifEmpty { playerIds.associateWith { 0 } },
                 playerInfo = playerInfo.ifEmpty { playerIds.associateWith { it } },
+                cheatPeekCounts = cheatPeekCounts.toMutableMap(),
+                reportCounts = reportCounts.toMutableMap(),
+                turnId = turnId,
+                reportTurnPlayerId = reportTurnPlayerId,
+                playerCheatedThisTurn = playerCheatedThisTurn,
+                cheatReportedThisTurn = cheatReportedThisTurn,
+                reportersThisTurn = reportersThisTurn.toMutableSet(),
                 sessionAliases = sessionAliases.toMutableMap(),
                 disconnectedNicknames = disconnectedNicknames.toMutableSet(),
             )
@@ -426,6 +551,16 @@ class GameService @Autowired constructor(
         roundNumber = game.roundNumber
         totalScores = game.totalScores
         playerInfo = game.playerInfo
+        cheatPeekCounts.clear()
+        cheatPeekCounts.putAll(game.cheatPeekCounts)
+        reportCounts.clear()
+        reportCounts.putAll(game.reportCounts)
+        turnId = game.turnId
+        reportTurnPlayerId = game.reportTurnPlayerId
+        playerCheatedThisTurn = game.playerCheatedThisTurn
+        cheatReportedThisTurn = game.cheatReportedThisTurn
+        reportersThisTurn.clear()
+        reportersThisTurn.addAll(game.reportersThisTurn)
         sessionAliases.clear()
         sessionAliases.putAll(game.sessionAliases)
         disconnectedNicknames.clear()
@@ -441,6 +576,16 @@ class GameService @Autowired constructor(
         game.roundNumber = roundNumber
         game.totalScores = totalScores.ifEmpty { game.totalScores }
         game.playerInfo = playerInfo.ifEmpty { game.playerInfo }
+        game.cheatPeekCounts.clear()
+        game.cheatPeekCounts.putAll(cheatPeekCounts)
+        game.reportCounts.clear()
+        game.reportCounts.putAll(reportCounts)
+        game.turnId = turnId
+        game.reportTurnPlayerId = reportTurnPlayerId
+        game.playerCheatedThisTurn = playerCheatedThisTurn
+        game.cheatReportedThisTurn = cheatReportedThisTurn
+        game.reportersThisTurn.clear()
+        game.reportersThisTurn.addAll(reportersThisTurn)
         game.sessionAliases.clear()
         game.sessionAliases.putAll(sessionAliases)
         game.disconnectedNicknames.clear()
@@ -452,6 +597,50 @@ class GameService @Autowired constructor(
             syncLegacyFrom(game)
         }
     }
+
+    private fun resetCheatReportRound(game: ManagedGame, currentPlayerId: String?) {
+        game.cheatPeekCounts.clear()
+        game.reportCounts.clear()
+        game.turnId = 0
+        resetCheatReportTurn(game, currentPlayerId)
+    }
+
+    private fun advanceCheatReportTurn(game: ManagedGame, currentPlayerId: String?) {
+        game.turnId += 1
+        resetCheatReportTurn(game, currentPlayerId)
+    }
+
+    private fun ensureCheatReportTurn(game: ManagedGame) {
+        val currentPlayerId = game.gameState.currentPlayerId
+        if (game.reportTurnPlayerId != currentPlayerId) {
+            advanceCheatReportTurn(game, currentPlayerId)
+        }
+    }
+
+    private fun resetCheatReportTurn(game: ManagedGame, currentPlayerId: String?) {
+        game.reportTurnPlayerId = currentPlayerId
+        game.playerCheatedThisTurn = false
+        game.cheatReportedThisTurn = false
+        game.reportersThisTurn.clear()
+    }
+
+    private fun addScorePenalty(game: ManagedGame, playerId: String, points: Int) {
+        game.totalScores = game.totalScores + (playerId to ((game.totalScores[playerId] ?: 0) + points))
+    }
+
+    private fun remainingCheatReportsFor(game: ManagedGame, playerId: String): Int =
+        (MAX_CHEAT_REPORTS_PER_PLAYER - (game.reportCounts[playerId] ?: 0)).coerceAtLeast(0)
+
+    private fun GameActionMessage.completesTurn(): Boolean =
+        when (type) {
+            ActionType.DRAW -> source == DrawSource.ACTION_DECK
+            ActionType.DRAW_VISIBLE_ACTION_CARD,
+            ActionType.REPLACE,
+            ActionType.DISCARD_AND_REVEAL,
+            ActionType.PLAY_ACTION_CARD,
+            ActionType.DISCARD_ACTION_CARD -> true
+            ActionType.START_NEXT_ROUND -> false
+        }
 
     private fun recordFinalStatsOnce(game: ManagedGame) {
         if (recordedStatsGameIds.add(game.gameId)) {
@@ -483,6 +672,7 @@ class GameService @Autowired constructor(
                 nickname = game.playerInfo[playerState.id] ?: playerState.id,
                 board = rows,
                 actionCards = playerState.actionCards.map(::toActionCardDto),
+                remainingCheatReports = remainingCheatReportsFor(game, playerState.id),
             )
         }
 
@@ -509,6 +699,7 @@ class GameService @Autowired constructor(
             gameId = game.gameId,
             lobbyId = game.lobbyId,
             disconnectedPlayers = game.disconnectedNicknames.toList(),
+            turnId = game.turnId,
         )
     }
 
@@ -521,6 +712,13 @@ class GameService @Autowired constructor(
             roundNumber = roundNumber,
             totalScores = totalScores,
             playerInfo = playerInfo,
+            cheatPeekCounts = cheatPeekCounts.toMutableMap(),
+            reportCounts = reportCounts.toMutableMap(),
+            turnId = turnId,
+            reportTurnPlayerId = reportTurnPlayerId,
+            playerCheatedThisTurn = playerCheatedThisTurn,
+            cheatReportedThisTurn = cheatReportedThisTurn,
+            reportersThisTurn = reportersThisTurn.toMutableSet(),
             sessionAliases = sessionAliases.toMutableMap(),
             disconnectedNicknames = disconnectedNicknames.toMutableSet(),
         )
