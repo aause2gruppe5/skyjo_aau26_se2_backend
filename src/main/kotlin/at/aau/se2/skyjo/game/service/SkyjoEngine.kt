@@ -86,6 +86,15 @@ class SkyjoEngine {
         )
     }
 
+    fun peekTopDrawCard(state: GameState): DrawPilePeekResult {
+        val playableState = requireReadyForTurnAction(state, "peek at draw pile")
+        val replenishedState = replenishDrawPileIfNeeded(playableState)
+        return DrawPilePeekResult(
+            state = replenishedState,
+            card = replenishedState.drawPile.cards.last(),
+        )
+    }
+
     fun takeDiscardCard(state: GameState): GameState {
         val playableState = requireReadyForTurnAction(state, "take discard card")
         val drawResult = playableState.discardPile.takeTop()
@@ -469,4 +478,9 @@ private data class ActionCardSetup(
     val drawPile: ActionDrawPile,
     val visibleCards: List<SkyjoCard.ActionCard>,
     val discardPile: ActionDiscardPile,
+)
+
+data class DrawPilePeekResult(
+    val state: GameState,
+    val card: SkyjoCard.PlayingCard,
 )

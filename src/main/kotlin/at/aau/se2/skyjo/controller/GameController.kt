@@ -33,6 +33,31 @@ class GameController(
         }
     }
 
+    @MessageMapping("/game.cheat-peek")
+    fun cheatPeekDrawPile(headerAccessor: SimpMessageHeaderAccessor) {
+        val playerId = headerAccessor.user?.name ?: return
+        runCatching {
+            val result = gameService.cheatPeekDrawPile(playerId)
+            logger.info("Cheat peek draw pile by $playerId")
+            messagingTemplate.convertAndSendToUser(playerId, "/queue/cheat-peek-results", result)
+        }.onFailure { e ->
+            messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
+        }
+    }
+
+    @MessageMapping("/game.cheat-report")
+    fun cheatReportCurrentPlayer(headerAccessor: SimpMessageHeaderAccessor) {
+        val playerId = headerAccessor.user?.name ?: return
+        runCatching {
+            val result = gameService.cheatReportCurrentPlayer(playerId)
+            logger.info("Cheat report by $playerId")
+            messagingTemplate.convertAndSend(result.gameUpdate.topicPath(), result.gameUpdate)
+            messagingTemplate.convertAndSendToUser(playerId, "/queue/cheat-report-results", result.privateReportResult)
+        }.onFailure { e ->
+            messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
+        }
+    }
+
     @MessageMapping("/game.action-card")
     fun playActionCard(
         @Payload command: PlayActionCardCommand,
