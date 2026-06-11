@@ -114,6 +114,17 @@ class LobbyServiceTest {
     }
 
     @Test
+    fun `starting legacy lobby twice throws error`() {
+        service.join("s1", "Alice")
+        service.join("s2", "Bob")
+        service.startGame("s1")
+
+        val ex = assertThrows<IllegalStateException> { service.startGame("s1") }
+
+        assertTrue(ex.message!!.contains("not waiting"))
+    }
+
+    @Test
     fun `non-lobby player cannot start game`() {
         service.join("s1", "Alice")
         service.join("s2", "Bob")

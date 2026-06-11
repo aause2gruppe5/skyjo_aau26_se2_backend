@@ -122,4 +122,22 @@ class AuthRepositoryTest {
         assertFalse(offline?.connected == true)
         assertNull(offline?.currentLobbyId)
     }
+
+    @Test
+    fun `current lobby can be cleared without changing presence state`() {
+        repo.createUser("user-1", "Alice", "hash", now = 1_000L)
+        repo.createUser("user-2", "Bob", "hash", now = 1_000L)
+        repo.setPresence(userId = "user-1", connected = true, currentLobbyId = "lobby-1", now = 2_000L)
+        repo.setPresence(userId = "user-2", connected = true, currentLobbyId = "lobby-2", now = 2_000L)
+
+        repo.clearCurrentLobby("lobby-1", now = 3_000L)
+
+        val cleared = repo.getPresence("user-1")
+        val unchanged = repo.getPresence("user-2")
+        assertTrue(cleared?.connected == true)
+        assertNull(cleared?.currentLobbyId)
+        assertEquals(3_000L, cleared?.updatedAt)
+        assertEquals("lobby-2", unchanged?.currentLobbyId)
+        assertEquals(2_000L, unchanged?.updatedAt)
+    }
 }

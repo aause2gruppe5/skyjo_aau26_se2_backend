@@ -36,6 +36,7 @@ class RandomLobbyIdGenerator : LobbyIdGenerator {
 
 class LobbyService(
     private val repository: LobbyRepository? = null,
+    private val authService: AuthService? = null,
     private val joinCodeGenerator: JoinCodeGenerator = RandomJoinCodeGenerator(),
     private val idGenerator: LobbyIdGenerator = RandomLobbyIdGenerator(),
     private val nowProvider: () -> Long = { System.currentTimeMillis() },
@@ -76,6 +77,9 @@ class LobbyService(
     }
 
     fun startGame(sessionId: String): LobbyState = lock.withLock {
+        if (state.status != LobbyStatus.WAITING) {
+            error("cannot start game: lobby is not waiting")
+        }
         val caller = state.players.find { it.sessionId == sessionId }
             ?: error("player not in lobby")
         if (!caller.isHost) {
@@ -214,6 +218,7 @@ class LobbyService(
                 lobby.players.map { it.userId }.forEach(inMemoryUserLobbyIds::remove)
                 inMemoryLobbies[lobbyId] = lobby.copy(status = LobbyStatus.CLOSED)
             }
+        authService?.clearCurrentLobby(lobbyId)
         getLobbyById(lobbyId)
     }
 

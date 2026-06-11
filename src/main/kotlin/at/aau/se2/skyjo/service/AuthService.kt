@@ -144,6 +144,10 @@ class AuthService @Autowired constructor(
         )
     }
 
+    fun clearCurrentLobby(lobbyId: String) {
+        repository.clearCurrentLobby(lobbyId, nowProvider())
+    }
+
     private fun createAuthResponse(userId: String, username: String, now: Long): AuthResponse {
         val token = tokenGenerator.generateToken()
         repository.createSession(
