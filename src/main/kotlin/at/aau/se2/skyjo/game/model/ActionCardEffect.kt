@@ -120,6 +120,11 @@ sealed interface ActionCardEffect {
                 throw InvalidMoveException("slot ${parameters.player2Position} of player ${parameters.player2Id} is not occupied")
             }
 
+            val protectedState = consumePlayerSwapDefenses(state, parameters)
+            if (protectedState !== state) {
+                return protectedState
+            }
+
             val updatedP1Board = p1.board.copy(
                 slots = p1.board.slots + (parameters.player1Position to slot1.copy(card = slot2.card)),
             )
@@ -143,6 +148,23 @@ sealed interface ActionCardEffect {
                     .addAll(p1Cleanup.removedCards)
                     .addAll(p2Cleanup.removedCards),
             )
+        }
+
+        private fun consumePlayerSwapDefenses(
+            state: GameState,
+            parameters: ActionCardParameters.PlayerSwap,
+        ): GameState {
+            val actingPlayerId = state.currentPlayerId
+                ?: throw InvalidMoveException("current player is not available")
+            val targetPlayerIds = listOf(parameters.player1Id, parameters.player2Id)
+                .filter { it != actingPlayerId }
+                .distinct()
+
+            return targetPlayerIds.fold(state) { protectedState, playerId ->
+                val targetIndex = protectedState.players.indexOfFirst { it.id == playerId }
+                val protection = protectedState.consumeDefenseForAttack(targetIndex)
+                if (protection.blocked) protection.state else protectedState
+            }
         }
     }
 }
