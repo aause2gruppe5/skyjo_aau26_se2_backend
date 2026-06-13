@@ -60,6 +60,7 @@ enum class ActionCardKind(val label: String) {
     SWAP_OWN_CARDS("Swap Own Cards"),
     PLAYER_SWAP("Swap"),
     DOUBLE_TURN("DoubleTurn"),
+    DRAW_THREE_CARDS("Draw Three Cards"),
 }
 
 data class PlayerScoreDto(

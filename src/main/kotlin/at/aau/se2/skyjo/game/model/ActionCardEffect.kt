@@ -47,6 +47,12 @@ sealed interface ActionCardEffect {
             state.copy(pendingExtraTurns = state.pendingExtraTurns + 1)
     }
 
+    data object DrawThreeCards : ActionCardEffect {
+        override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
+            throw InvalidMoveException("Draw Three Cards is handled by the two-step action-card flow")
+        }
+    }
+
     data object SwapOwnCards : ActionCardEffect {
         override fun apply(state: GameState, parameters: ActionCardParameters): GameState {
             val swapParameters = parameters as? ActionCardParameters.SwapOwnParameters
@@ -149,6 +155,7 @@ fun SkyjoCard.ActionCard.toEffect(): ActionCardEffect =
         is SkyjoCard.ActionCard.SwapOwnCards -> ActionCardEffect.SwapOwnCards
         is SkyjoCard.ActionCard.Placeholder -> ActionCardEffect.Placeholder
         is SkyjoCard.ActionCard.PlayerSwapCard -> ActionCardEffect.PlayerSwap
+        is SkyjoCard.ActionCard.DrawThreeCards -> ActionCardEffect.DrawThreeCards
     }
 
 private fun ActionCardParameters.BoardLineTarget.positions(): List<BoardPosition> =

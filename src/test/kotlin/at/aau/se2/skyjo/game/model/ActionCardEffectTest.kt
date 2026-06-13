@@ -41,6 +41,13 @@ class ActionCardEffectTest {
     }
 
     @Test
+    fun drawThreeCardsCardMapsToDrawThreeCardsEffect() {
+        val card = SkyjoCard.ActionCard.DrawThreeCards(id = 154)
+
+        assertSame(ActionCardEffect.DrawThreeCards, card.toEffect())
+    }
+
+    @Test
     fun placeholderActionCardEffectKeepsStateUnchanged() {
         val state = GameState()
 

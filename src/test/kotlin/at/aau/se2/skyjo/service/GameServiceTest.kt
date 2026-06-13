@@ -134,6 +134,7 @@ class GameServiceTest {
                     ActionCardKind.SWAP_OWN_CARDS,
                     ActionCardKind.PLAYER_SWAP,
                     ActionCardKind.DOUBLE_TURN,
+                    ActionCardKind.DRAW_THREE_CARDS,
                     ActionCardKind.PLACEHOLDER,
                 )
             },
@@ -670,6 +671,7 @@ class GameServiceTest {
                         SkyjoCard.ActionCard.PlayerSwapCard(id = 1000),
                         SkyjoCard.ActionCard.SwapOwnCards(id = 1001),
                         SkyjoCard.ActionCard.DoubleTurn(id = 1002),
+                        SkyjoCard.ActionCard.DrawThreeCards(id = 1003),
                     ),
                 )
             } else {
@@ -687,6 +689,7 @@ class GameServiceTest {
                 ActionCardKind.PLAYER_SWAP,
                 ActionCardKind.SWAP_OWN_CARDS,
                 ActionCardKind.DOUBLE_TURN,
+                ActionCardKind.DRAW_THREE_CARDS,
             ),
             currentPlayer.actionCards.map { it.kind },
         )

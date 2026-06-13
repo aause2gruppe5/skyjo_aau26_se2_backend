@@ -249,6 +249,8 @@ class GameService @Autowired constructor(
                     is SkyjoCard.ActionCard.Placeholder -> ActionCardParameters.None
                     is SkyjoCard.ActionCard.Enlightenment ->
                         error("enlightenment requires private PLAY_ACTION_CARD command parameters")
+                    is SkyjoCard.ActionCard.DrawThreeCards ->
+                        error("Draw Three Cards requires private PLAY_ACTION_CARD command parameters")
                 }
 
                 engine.playActionCard(
@@ -290,13 +292,16 @@ class GameService @Autowired constructor(
         }
 
         val updatedStateWithResult = engine.playActionCard(state, command)
+        val startedPendingAction = state.pendingActionCard == null && updatedStateWithResult.pendingActionCard != null
         val privateResults = updatedStateWithResult.actionCardResult
             ?.let { result -> mapOf(playerId to result.toMessage(command.actionCardIndex)) }
             ?: emptyMap()
         val updatedState = updatedStateWithResult.copy(actionCardResult = null)
 
         game.gameState = updatedState
-        advanceCheatReportTurn(game, updatedState.currentPlayerId)
+        if (!startedPendingAction) {
+            advanceCheatReportTurn(game, updatedState.currentPlayerId)
+        }
         gameRepository?.saveGame(game.gameId, game.lobbyId, updatedState)
         syncLegacyIfCurrent(game)
 
@@ -741,6 +746,7 @@ class GameService @Autowired constructor(
                 is SkyjoCard.ActionCard.DoubleTurn -> ActionCardKind.DOUBLE_TURN
                 is SkyjoCard.ActionCard.SwapOwnCards -> ActionCardKind.SWAP_OWN_CARDS
                 is SkyjoCard.ActionCard.PlayerSwapCard -> ActionCardKind.PLAYER_SWAP
+                is SkyjoCard.ActionCard.DrawThreeCards -> ActionCardKind.DRAW_THREE_CARDS
             },
             label = card.displayLabel(),
             value = card.scoreValue(),
@@ -781,6 +787,13 @@ class GameService @Autowired constructor(
                     lineIndex = lineIndex,
                     inspectedValues = inspectedCards.map { it.value },
                     inspectedCards = inspectedCards,
+                )
+            }
+            is ActionCardResult.DrawThreeCards -> {
+                ActionCardResultMessage(
+                    type = ActionCardResultType.DRAW_THREE_CARDS,
+                    actionCardIndex = actionCardIndex,
+                    drawnCards = cards.map(::toCardDto),
                 )
             }
         }
