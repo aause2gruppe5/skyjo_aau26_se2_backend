@@ -762,6 +762,51 @@ class GameServiceTest {
     }
 
     @Test
+    fun `processAction PLAY_ACTION_CARD player swap is blocked by defense after being played`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val currentPlayerId = state.currentPlayerId!!
+        val currentPlayerIndex = state.currentPlayerIndex
+        val otherPlayerIndex = state.players.indices.first { it != currentPlayerIndex }
+        val otherPlayerId = state.players[otherPlayerIndex].id
+        val currentPosition = BoardPosition(0, 0)
+        val otherPosition = BoardPosition(0, 0)
+        val currentSlotBefore = state.players[currentPlayerIndex].board.slotAt(currentPosition)
+        val otherSlotBefore = state.players[otherPlayerIndex].board.slotAt(otherPosition)
+        val playerSwapCard = SkyjoCard.ActionCard.PlayerSwapCard(id = 1000)
+        val defenseCard = SkyjoCard.ActionCard.Defense(id = 1001)
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            when (index) {
+                currentPlayerIndex -> player.copy(actionCards = listOf(playerSwapCard))
+                otherPlayerIndex -> player.copy(actionCards = listOf(defenseCard))
+                else -> player
+            }
+        }
+        setInternalGameState(service, state.copy(players = updatedPlayers))
+
+        service.processAction(
+            currentPlayerId,
+            GameActionMessage(
+                type = ActionType.PLAY_ACTION_CARD,
+                actionCardIndex = 0,
+                targetPlayer1Id = otherPlayerId,
+                targetPlayer1Row = otherPosition.row,
+                targetPlayer1Col = otherPosition.column,
+                targetPlayer2Id = currentPlayerId,
+                targetPlayer2Row = currentPosition.row,
+                targetPlayer2Col = currentPosition.column,
+            ),
+        )
+
+        val updatedState = getInternalGameState(service)
+        assertEquals(currentSlotBefore, updatedState.players[currentPlayerIndex].board.slotAt(currentPosition))
+        assertEquals(otherSlotBefore, updatedState.players[otherPlayerIndex].board.slotAt(otherPosition))
+        assertTrue(updatedState.players[currentPlayerIndex].actionCards.isEmpty())
+        assertTrue(updatedState.players[otherPlayerIndex].actionCards.isEmpty())
+        assertEquals(listOf(playerSwapCard, defenseCard), updatedState.actionDiscardPile.cards.takeLast(2))
+    }
+
+    @Test
     fun `processAction PLAY_ACTION_CARD performs own card swap`() {
         service.startGame(players)
         val state = getInternalGameState(service)

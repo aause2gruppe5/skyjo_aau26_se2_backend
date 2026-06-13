@@ -221,6 +221,43 @@ class ActionCardEffectTest {
     }
 
     @Test
+    fun playerSwapActionCardEffectConsumesDefenseAndDoesNotSwapCards() {
+        val card1 = SkyjoCard.NumberCard(id = 10, value = 3)
+        val card2 = SkyjoCard.NumberCard(id = 20, value = 7)
+        val defenseCard = SkyjoCard.ActionCard.Defense(id = 151)
+        val pos1 = BoardPosition(0, 0)
+        val pos2 = BoardPosition(1, 1)
+        val state = GameState(
+            players = listOf(
+                PlayerState(id = "p1", board = buildBoard(mapOf(pos1 to BoardSlot.Occupied(card1, faceUp = true)))),
+                PlayerState(
+                    id = "p2",
+                    board = buildBoard(mapOf(pos2 to BoardSlot.Occupied(card2, faceUp = false))),
+                    actionCards = listOf(defenseCard),
+                ),
+            ),
+        )
+
+        val result = ActionCardEffect.PlayerSwap.apply(
+            state,
+            ActionCardParameters.PlayerSwap(
+                player1Id = "p1",
+                player1Position = pos1,
+                player2Id = "p2",
+                player2Position = pos2,
+            ),
+        )
+
+        val p1Slot = result.players.first { it.id == "p1" }.board.slotAt(pos1) as BoardSlot.Occupied
+        val p2 = result.players.first { it.id == "p2" }
+        val p2Slot = p2.board.slotAt(pos2) as BoardSlot.Occupied
+        assertEquals(card1, p1Slot.card)
+        assertEquals(card2, p2Slot.card)
+        assertTrue(p2.actionCards.isEmpty())
+        assertEquals(defenseCard, result.actionDiscardPile.topCard())
+    }
+
+    @Test
     fun playerSwapActionCardEffectRejectsSamePlayer() {
         val pos = BoardPosition(0, 0)
         val state = GameState(
