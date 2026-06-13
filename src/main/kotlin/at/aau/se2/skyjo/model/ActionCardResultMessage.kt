@@ -5,15 +5,17 @@ import at.aau.se2.skyjo.game.model.BoardLineTargetType
 data class ActionCardResultMessage(
     val type: ActionCardResultType,
     val actionCardIndex: Int,
-    val targetPlayerId: String,
-    val targetType: BoardLineTargetType,
-    val lineIndex: Int,
-    val inspectedValues: List<Int?>,
-    val inspectedCards: List<InspectedCardDto>,
+    val targetPlayerId: String? = null,
+    val targetType: BoardLineTargetType? = null,
+    val lineIndex: Int? = null,
+    val inspectedValues: List<Int?> = emptyList(),
+    val inspectedCards: List<InspectedCardDto> = emptyList(),
+    val drawnCards: List<CardDto> = emptyList(),
 )
 
 enum class ActionCardResultType {
     ENLIGHTENMENT,
+    DRAW_THREE_CARDS,
 }
 
 data class InspectedCardDto(

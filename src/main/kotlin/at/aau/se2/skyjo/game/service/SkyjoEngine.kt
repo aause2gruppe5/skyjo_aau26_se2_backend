@@ -5,6 +5,7 @@ import at.aau.se2.skyjo.game.error.InvalidGameSetupException
 import at.aau.se2.skyjo.game.error.InvalidMoveException
 import at.aau.se2.skyjo.game.error.RoundAlreadyFinishedException
 import at.aau.se2.skyjo.game.model.ActionDiscardPile
+import at.aau.se2.skyjo.game.model.ActionCardResult
 import at.aau.se2.skyjo.game.model.ActionCardParameters
 import at.aau.se2.skyjo.game.model.ActionDrawPile
 import at.aau.se2.skyjo.game.model.BoardLayout
@@ -13,8 +14,11 @@ import at.aau.se2.skyjo.game.model.BoardSlot
 import at.aau.se2.skyjo.game.model.DiscardPile
 import at.aau.se2.skyjo.game.model.DrawPile
 import at.aau.se2.skyjo.game.model.DrawSource
+import at.aau.se2.skyjo.game.model.DrawThreeCardsChoiceMode
+import at.aau.se2.skyjo.game.model.DrawThreeCardsDiscardReference
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
+import at.aau.se2.skyjo.game.model.PendingActionCard
 import at.aau.se2.skyjo.game.model.PlayerBoard
 import at.aau.se2.skyjo.game.model.PlayerState
 import at.aau.se2.skyjo.game.model.PlayActionCardCommand
@@ -26,6 +30,7 @@ import org.springframework.stereotype.Component
 import kotlin.random.Random
 
 private const val VISIBLE_ACTION_CARD_COUNT = 4
+private const val DRAW_THREE_CARDS_COUNT = 3
 
 @Component
 class SkyjoEngine {
@@ -170,12 +175,16 @@ class SkyjoEngine {
         playOrDiscardActionCard(state, actionCardIndex, applyEffect = false)
 
     fun playActionCard(state: GameState, command: PlayActionCardCommand): GameState =
-        playOrDiscardActionCard(
-            state = state,
-            actionCardIndex = command.actionCardIndex,
-            applyEffect = true,
-            parameters = command.parameters,
-        )
+        when (val parameters = command.parameters) {
+            is ActionCardParameters.DrawThreeCardsChoice ->
+                completeDrawThreeCardsAction(state, command.actionCardIndex, parameters)
+            else -> playOrDiscardActionCard(
+                state = state,
+                actionCardIndex = command.actionCardIndex,
+                applyEffect = true,
+                parameters = parameters,
+            )
+        }
 
     fun replaceDrawnCard(state: GameState, position: BoardPosition): GameState {
         val playableState = requireAwaitingReplacement(state)
@@ -290,6 +299,9 @@ class SkyjoEngine {
         if (playableState.phase != GamePhase.AWAITING_DRAW && playableState.phase != GamePhase.FINAL_TURNS) {
             throw InvalidMoveException("cannot $action while phase is ${playableState.phase}")
         }
+        if (playableState.pendingActionCard != null) {
+            throw InvalidMoveException("pending action card must be completed first")
+        }
         return playableState
     }
 
@@ -297,6 +309,9 @@ class SkyjoEngine {
         val playableState = requireActiveRound(state)
         if (playableState.phase != GamePhase.AWAITING_REPLACEMENT) {
             throw InvalidMoveException("a card has to be drawn before this action")
+        }
+        if (playableState.pendingActionCard != null) {
+            throw InvalidMoveException("pending action card must be completed first")
         }
         return playableState
     }
@@ -344,6 +359,13 @@ class SkyjoEngine {
         }
 
         val actionCard = currentPlayer.actionCards[actionCardIndex]
+        if (applyEffect && actionCard is SkyjoCard.ActionCard.Placeholder) {
+            throw InvalidMoveException("placeholder action cards cannot be played")
+        }
+        if (applyEffect && actionCard is SkyjoCard.ActionCard.DrawThreeCards) {
+            return startDrawThreeCardsAction(playableState, actionCardIndex, actionCard)
+        }
+
         val remainingActionCards = currentPlayer.actionCards.filterIndexed { index, _ -> index != actionCardIndex }
         val updatedPlayers = playableState.players.updated(
             playableState.currentPlayerIndex,
@@ -365,6 +387,280 @@ class SkyjoEngine {
 
         return advanceAfterTurn(stateAfterAction)
     }
+
+    private fun startDrawThreeCardsAction(
+        state: GameState,
+        actionCardIndex: Int,
+        actionCard: SkyjoCard.ActionCard.DrawThreeCards,
+    ): GameState {
+        val actingPlayerId = state.currentPlayerId
+            ?: throw InvalidMoveException("current player is not available")
+        var drawingState = state
+        val drawnCards = buildList {
+            repeat(DRAW_THREE_CARDS_COUNT) {
+                drawingState = replenishDrawPileIfNeeded(drawingState)
+                val drawResult = drawingState.drawPile.draw()
+                add(drawResult.card)
+                drawingState = drawingState.copy(drawPile = drawResult.remainingPile)
+            }
+        }
+
+        return drawingState.copy(
+            drawnCard = null,
+            drawSource = null,
+            actionCardResult = ActionCardResult.DrawThreeCards(
+                actingPlayerId = actingPlayerId,
+                cards = drawnCards,
+            ),
+            pendingActionCard = PendingActionCard.DrawThreeCards(
+                actingPlayerId = actingPlayerId,
+                actionCardIndex = actionCardIndex,
+                actionCardId = actionCard.id,
+                cards = drawnCards,
+            ),
+        )
+    }
+
+    private fun completeDrawThreeCardsAction(
+        state: GameState,
+        actionCardIndex: Int,
+        parameters: ActionCardParameters.DrawThreeCardsChoice,
+    ): GameState {
+        val playableState = requireActiveRound(state)
+        if (playableState.phase != GamePhase.AWAITING_DRAW) {
+            throw InvalidMoveException("cannot complete Draw Three Cards while phase is ${playableState.phase}")
+        }
+
+        val pending = playableState.pendingActionCard as? PendingActionCard.DrawThreeCards
+            ?: throw InvalidMoveException("no pending Draw Three Cards action")
+        val currentPlayer = playableState.currentPlayer()
+        if (pending.actingPlayerId != currentPlayer.id) {
+            throw InvalidMoveException("pending Draw Three Cards action belongs to ${pending.actingPlayerId}")
+        }
+        if (parameters.targetPlayerId != null && parameters.targetPlayerId != currentPlayer.id) {
+            throw InvalidMoveException("Draw Three Cards can only target your own board")
+        }
+        if (actionCardIndex != pending.actionCardIndex) {
+            throw InvalidMoveException("action card index $actionCardIndex does not match the pending Draw Three Cards action")
+        }
+        val actionCard = currentPlayer.actionCards.getOrNull(actionCardIndex)
+            ?: throw InvalidMoveException("action card index $actionCardIndex is not available")
+        if (actionCard !is SkyjoCard.ActionCard.DrawThreeCards || actionCard.id != pending.actionCardId) {
+            throw InvalidMoveException("pending Draw Three Cards action card is not available")
+        }
+
+        return when (parameters.mode) {
+            DrawThreeCardsChoiceMode.KEEP_ONE_AND_SWAP -> completeDrawThreeCardsKeepOneAndSwap(
+                playableState = playableState,
+                currentPlayer = currentPlayer,
+                pending = pending,
+                actionCardIndex = actionCardIndex,
+                actionCard = actionCard,
+                parameters = parameters,
+            )
+            DrawThreeCardsChoiceMode.DISCARD_ALL_AND_REVEAL -> completeDrawThreeCardsDiscardAllAndReveal(
+                playableState = playableState,
+                currentPlayer = currentPlayer,
+                pending = pending,
+                actionCardIndex = actionCardIndex,
+                actionCard = actionCard,
+                parameters = parameters,
+            )
+        }
+    }
+
+    private fun completeDrawThreeCardsKeepOneAndSwap(
+        playableState: GameState,
+        currentPlayer: PlayerState,
+        pending: PendingActionCard.DrawThreeCards,
+        actionCardIndex: Int,
+        actionCard: SkyjoCard.ActionCard,
+        parameters: ActionCardParameters.DrawThreeCardsChoice,
+    ): GameState {
+        val chosenIndex = requiredDrawThreeCardsParameter(
+            value = parameters.chosenDrawnCardIndex,
+            fieldName = "chosenDrawnCardIndex",
+            mode = parameters.mode,
+        )
+        if (chosenIndex !in pending.cards.indices) {
+            throw InvalidMoveException("chosenDrawnCardIndex $chosenIndex is not available")
+        }
+        validateDrawThreeCardsSwapDiscardOrder(parameters.discardOrder, chosenIndex)
+
+        val targetRow = requiredDrawThreeCardsParameter(parameters.targetRow, "targetRow", parameters.mode)
+        val targetColumn = requiredDrawThreeCardsParameter(parameters.targetColumn, "targetColumn", parameters.mode)
+        val targetPosition = boardPositionOrInvalid(targetRow, targetColumn)
+        val targetSlot = currentPlayer.board.slotAt(targetPosition)
+        if (targetSlot !is BoardSlot.Occupied) {
+            throw InvalidMoveException("slot $targetPosition of current player is not occupied")
+        }
+
+        val replacementResult = currentPlayer.board.replace(targetPosition, pending.cards[chosenIndex])
+        val cleanupResult = replacementResult.board.clearCompletedLines()
+        val discardedCards = parameters.discardOrder.map { reference ->
+            reference.toDrawThreeCardsDiscardedCard(pending.cards, replacementResult.replacedCard)
+        }
+
+        return completeDrawThreeCardsAction(
+            playableState = playableState,
+            currentPlayer = currentPlayer,
+            actionCardIndex = actionCardIndex,
+            actionCard = actionCard,
+            updatedBoard = cleanupResult.board,
+            discardedCards = discardedCards,
+            cleanupCards = cleanupResult.removedCards,
+        )
+    }
+
+    private fun completeDrawThreeCardsDiscardAllAndReveal(
+        playableState: GameState,
+        currentPlayer: PlayerState,
+        pending: PendingActionCard.DrawThreeCards,
+        actionCardIndex: Int,
+        actionCard: SkyjoCard.ActionCard,
+        parameters: ActionCardParameters.DrawThreeCardsChoice,
+    ): GameState {
+        validateDrawThreeCardsDiscardAllOrder(parameters.discardOrder)
+
+        val revealRow = requiredDrawThreeCardsParameter(parameters.revealRow, "revealRow", parameters.mode)
+        val revealColumn = requiredDrawThreeCardsParameter(parameters.revealColumn, "revealColumn", parameters.mode)
+        val revealPosition = boardPositionOrInvalid(revealRow, revealColumn)
+        val revealSlot = currentPlayer.board.slotAt(revealPosition)
+        if (revealSlot !is BoardSlot.Occupied || revealSlot.faceUp) {
+            throw InvalidMoveException("discard all and reveal requires a face-down occupied slot")
+        }
+
+        val revealedBoard = currentPlayer.board.reveal(revealPosition)
+        val cleanupResult = revealedBoard.clearCompletedLines()
+        val discardedCards = parameters.discardOrder.map { reference ->
+            reference.toDrawThreeCardsDiscardedCard(pending.cards)
+        }
+
+        return completeDrawThreeCardsAction(
+            playableState = playableState,
+            currentPlayer = currentPlayer,
+            actionCardIndex = actionCardIndex,
+            actionCard = actionCard,
+            updatedBoard = cleanupResult.board,
+            discardedCards = discardedCards,
+            cleanupCards = cleanupResult.removedCards,
+        )
+    }
+
+    private fun completeDrawThreeCardsAction(
+        playableState: GameState,
+        currentPlayer: PlayerState,
+        actionCardIndex: Int,
+        actionCard: SkyjoCard.ActionCard,
+        updatedBoard: PlayerBoard,
+        discardedCards: List<SkyjoCard.PlayingCard>,
+        cleanupCards: List<SkyjoCard.PlayingCard>,
+    ): GameState {
+        val remainingActionCards = currentPlayer.actionCards.filterIndexed { index, _ -> index != actionCardIndex }
+        val updatedCurrentPlayer = currentPlayer.copy(
+            board = updatedBoard,
+            actionCards = remainingActionCards,
+        )
+        val updatedPlayers = playableState.players.updated(
+            playableState.currentPlayerIndex,
+            updatedCurrentPlayer,
+        )
+
+        return advanceAfterTurn(
+            playableState.copy(
+                players = updatedPlayers,
+                discardPile = playableState.discardPile
+                    .addAll(discardedCards)
+                    .addAll(cleanupCards),
+                actionDiscardPile = playableState.actionDiscardPile.add(actionCard),
+                drawnCard = null,
+                drawSource = null,
+                actionCardResult = null,
+                pendingActionCard = null,
+            ),
+        )
+    }
+
+    private fun requiredDrawThreeCardsParameter(
+        value: Int?,
+        fieldName: String,
+        mode: DrawThreeCardsChoiceMode,
+    ): Int = value ?: throw InvalidMoveException("$fieldName required for $mode")
+
+    private fun boardPositionOrInvalid(row: Int, column: Int): BoardPosition =
+        runCatching { BoardPosition(row, column) }
+            .getOrElse { throw InvalidMoveException(it.message ?: "board position is not available") }
+
+    private fun validateDrawThreeCardsSwapDiscardOrder(
+        discardOrder: List<DrawThreeCardsDiscardReference>,
+        chosenDrawnCardIndex: Int,
+    ) {
+        validateDrawThreeCardsDiscardOrderBasics(discardOrder)
+
+        val expectedReferences = setOf(
+            DrawThreeCardsDiscardReference.DRAWN_CARD_0,
+            DrawThreeCardsDiscardReference.DRAWN_CARD_1,
+            DrawThreeCardsDiscardReference.DRAWN_CARD_2,
+            DrawThreeCardsDiscardReference.SWAPPED_BOARD_CARD,
+        ) - drawnCardDiscardReference(chosenDrawnCardIndex)
+
+        if (discardOrder.toSet() != expectedReferences) {
+            throw InvalidMoveException("discardOrder must contain the two unchosen drawn cards and the swapped board card")
+        }
+    }
+
+    private fun validateDrawThreeCardsDiscardAllOrder(discardOrder: List<DrawThreeCardsDiscardReference>) {
+        validateDrawThreeCardsDiscardOrderBasics(discardOrder)
+
+        val expectedReferences = setOf(
+            DrawThreeCardsDiscardReference.DRAWN_CARD_0,
+            DrawThreeCardsDiscardReference.DRAWN_CARD_1,
+            DrawThreeCardsDiscardReference.DRAWN_CARD_2,
+        )
+
+        if (discardOrder.toSet() != expectedReferences) {
+            throw InvalidMoveException("discardOrder must contain all three drawn cards")
+        }
+    }
+
+    private fun validateDrawThreeCardsDiscardOrderBasics(discardOrder: List<DrawThreeCardsDiscardReference>) {
+        if (discardOrder.size != DRAW_THREE_CARDS_COUNT) {
+            throw InvalidMoveException("discardOrder must contain exactly three cards")
+        }
+        if (discardOrder.toSet().size != discardOrder.size) {
+            throw InvalidMoveException("discardOrder must not contain duplicates")
+        }
+    }
+
+    private fun drawnCardDiscardReference(index: Int): DrawThreeCardsDiscardReference =
+        when (index) {
+            0 -> DrawThreeCardsDiscardReference.DRAWN_CARD_0
+            1 -> DrawThreeCardsDiscardReference.DRAWN_CARD_1
+            2 -> DrawThreeCardsDiscardReference.DRAWN_CARD_2
+            else -> throw InvalidMoveException("chosenDrawnCardIndex $index is not available")
+        }
+
+    private fun DrawThreeCardsDiscardReference.toDrawThreeCardsDiscardedCard(
+        drawnCards: List<SkyjoCard.PlayingCard>,
+        swappedBoardCard: SkyjoCard.PlayingCard,
+    ): SkyjoCard.PlayingCard =
+        when (this) {
+            DrawThreeCardsDiscardReference.DRAWN_CARD_0 -> drawnCards[0]
+            DrawThreeCardsDiscardReference.DRAWN_CARD_1 -> drawnCards[1]
+            DrawThreeCardsDiscardReference.DRAWN_CARD_2 -> drawnCards[2]
+            DrawThreeCardsDiscardReference.SWAPPED_BOARD_CARD -> swappedBoardCard
+        }
+
+    private fun DrawThreeCardsDiscardReference.toDrawThreeCardsDiscardedCard(
+        drawnCards: List<SkyjoCard.PlayingCard>,
+    ): SkyjoCard.PlayingCard =
+        when (this) {
+            DrawThreeCardsDiscardReference.DRAWN_CARD_0 -> drawnCards[0]
+            DrawThreeCardsDiscardReference.DRAWN_CARD_1 -> drawnCards[1]
+            DrawThreeCardsDiscardReference.DRAWN_CARD_2 -> drawnCards[2]
+            DrawThreeCardsDiscardReference.SWAPPED_BOARD_CARD ->
+                throw InvalidMoveException("discardOrder must contain all three drawn cards")
+        }
 
     private fun advanceAfterTurn(state: GameState): GameState {
         val currentPlayer = state.currentPlayer()
@@ -456,6 +752,7 @@ class SkyjoEngine {
             finalTurnsRemaining = 0,
             roundResult = roundResult,
             actionCardResult = null,
+            pendingActionCard = null,
         )
     }
 

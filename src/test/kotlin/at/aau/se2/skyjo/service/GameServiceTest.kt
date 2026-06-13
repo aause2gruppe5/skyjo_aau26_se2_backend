@@ -124,7 +124,7 @@ class GameServiceTest {
         val result = service.startGame(players)
 
         assertEquals(4, result.visibleActionCards.size)
-        assertEquals(16, result.actionDrawPileCount)
+        assertEquals(13, result.actionDrawPileCount)
         assertTrue(result.visibleActionCards.all { it.value == 10 })
         assertTrue(
             result.visibleActionCards.all {
@@ -134,7 +134,7 @@ class GameServiceTest {
                     ActionCardKind.SWAP_OWN_CARDS,
                     ActionCardKind.PLAYER_SWAP,
                     ActionCardKind.DOUBLE_TURN,
-                    ActionCardKind.PLACEHOLDER,
+                    ActionCardKind.DRAW_THREE_CARDS,
                 )
             },
         )
@@ -556,7 +556,7 @@ class GameServiceTest {
 
         val player = result.players.first { it.playerId == currentPlayerId }
         assertEquals(1, player.actionCards.size)
-        assertEquals(15, result.actionDrawPileCount)
+        assertEquals(12, result.actionDrawPileCount)
         assertEquals(10, player.actionCards.single().value)
     }
 
@@ -575,7 +575,7 @@ class GameServiceTest {
         val player = result.players.first { it.playerId == currentPlayerId }
         assertEquals(visibleCard.id, player.actionCards.single().id)
         assertEquals(4, result.visibleActionCards.size)
-        assertEquals(15, result.actionDrawPileCount)
+        assertEquals(12, result.actionDrawPileCount)
     }
 
     @Test
@@ -642,7 +642,7 @@ class GameServiceTest {
         val currentPlayerId = state.currentPlayerId!!
         val updatedPlayers = state.players.mapIndexed { index, player ->
             if (index == state.currentPlayerIndex) {
-                player.copy(actionCards = listOf(SkyjoCard.ActionCard.Placeholder(id = 1000)))
+                player.copy(actionCards = listOf(SkyjoCard.ActionCard.Defense(id = 1000)))
             } else {
                 player
             }
@@ -670,6 +670,7 @@ class GameServiceTest {
                         SkyjoCard.ActionCard.PlayerSwapCard(id = 1000),
                         SkyjoCard.ActionCard.SwapOwnCards(id = 1001),
                         SkyjoCard.ActionCard.DoubleTurn(id = 1002),
+                        SkyjoCard.ActionCard.DrawThreeCards(id = 1003),
                     ),
                 )
             } else {
@@ -687,9 +688,44 @@ class GameServiceTest {
                 ActionCardKind.PLAYER_SWAP,
                 ActionCardKind.SWAP_OWN_CARDS,
                 ActionCardKind.DOUBLE_TURN,
+                ActionCardKind.DRAW_THREE_CARDS,
             ),
             currentPlayer.actionCards.map { it.kind },
         )
+    }
+
+    @Test
+    fun `game updates filter placeholder action cards for compatibility`() {
+        service.startGame(players)
+        val state = getInternalGameState(service)
+        val updatedPlayers = state.players.mapIndexed { index, player ->
+            if (index == state.currentPlayerIndex) {
+                player.copy(
+                    actionCards = listOf(
+                        SkyjoCard.ActionCard.Placeholder(id = 1000),
+                        SkyjoCard.ActionCard.Defense(id = 1001),
+                    ),
+                )
+            } else {
+                player
+            }
+        }
+        setInternalGameState(
+            service,
+            state.copy(
+                players = updatedPlayers,
+                visibleActionCards = listOf(
+                    SkyjoCard.ActionCard.Placeholder(id = 1002),
+                    SkyjoCard.ActionCard.Enlightenment(id = 1003),
+                ),
+            ),
+        )
+
+        val update = service.getCurrentState()!!
+        val currentPlayer = update.players.first { it.playerId == state.currentPlayerId }
+
+        assertEquals(listOf(ActionCardKind.DEFENSE), currentPlayer.actionCards.map { it.kind })
+        assertEquals(listOf(ActionCardKind.ENLIGHTENMENT), update.visibleActionCards.map { it.kind })
     }
 
     @Test
@@ -885,7 +921,7 @@ class GameServiceTest {
     }
 
     @Test
-    fun `processAction PLAY_ACTION_CARD with placeholder uses no parameters`() {
+    fun `processAction PLAY_ACTION_CARD rejects placeholder action card`() {
         service.startGame(players)
         val state = getInternalGameState(service)
         val currentPlayerId = state.currentPlayerId!!
@@ -898,13 +934,18 @@ class GameServiceTest {
         }
         setInternalGameState(service, state.copy(players = updatedPlayers))
 
-        val result = service.processAction(
-            currentPlayerId,
-            GameActionMessage(ActionType.PLAY_ACTION_CARD, actionCardIndex = 0),
-        )
+        val exception = assertThrows<InvalidMoveException> {
+            service.processAction(
+                currentPlayerId,
+                GameActionMessage(ActionType.PLAY_ACTION_CARD, actionCardIndex = 0),
+            )
+        }
 
-        assertNotEquals(currentPlayerId, result.currentPlayerId)
-        assertTrue(result.players.first { it.playerId == currentPlayerId }.actionCards.isEmpty())
+        assertTrue(exception.message!!.contains("placeholder action cards cannot be played"))
+        assertEquals(
+            listOf(SkyjoCard.ActionCard.Placeholder(id = 1000)),
+            getInternalGameState(service).currentPlayer().actionCards,
+        )
     }
 
     @Test

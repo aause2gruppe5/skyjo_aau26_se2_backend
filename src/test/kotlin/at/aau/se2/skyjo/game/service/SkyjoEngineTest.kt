@@ -72,7 +72,7 @@ class SkyjoEngineTest {
             assertThat(state.discardPile.size).isEqualTo(1)
             assertThat(state.visibleActionCards).hasSize(4)
             assertThat(state.actionDiscardPile.size).isEqualTo(1)
-            assertThat(state.actionDrawPile.size).isEqualTo(16)
+            assertThat(state.actionDrawPile.size).isEqualTo(13)
             assertThat(state.shuffleSeed).isEqualTo(seed)
         }
     }
@@ -1436,7 +1436,7 @@ class SkyjoEngineTest {
     //Hilfsfunktionen (Mocking)
     private fun mockPosition(col: Int = 0, row: Int = 0) = BoardPosition(col, row)
     private fun mockCard(id: Int = 1, value: Int = 1) = SkyjoCard.NumberCard(id, value)
-    private fun actionCard(id: Int = 151) = SkyjoCard.ActionCard.Placeholder(id)
+    private fun actionCard(id: Int = 151) = SkyjoCard.ActionCard.Enlightenment(id)
     private fun enlightenmentCard(id: Int = 151) = SkyjoCard.ActionCard.Enlightenment(id)
     private fun defenseCard(id: Int = 151) = SkyjoCard.ActionCard.Defense(id)
     private fun mockPlayer(id: String = "p1", board: PlayerBoard = mockPlayerBoard()) = PlayerState(id, board)

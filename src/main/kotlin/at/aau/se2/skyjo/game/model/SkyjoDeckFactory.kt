@@ -12,12 +12,19 @@ object SkyjoDeckFactory {
         }
     }
 
-    private const val ACTION_CARD_COUNT = 21
     private const val ENLIGHTENMENT_CARD_COUNT = 3
     private const val DEFENSE_CARD_COUNT = 3
     private const val SWAP_OWN_CARDS_COUNT = 3
     private const val PLAYER_SWAP_CARD_COUNT = 3
     private const val DOUBLE_TURN_CARD_COUNT = 3
+    private const val DRAW_THREE_CARDS_COUNT = 3
+    private const val ACTION_CARD_COUNT =
+        ENLIGHTENMENT_CARD_COUNT +
+            DEFENSE_CARD_COUNT +
+            SWAP_OWN_CARDS_COUNT +
+            PLAYER_SWAP_CARD_COUNT +
+            DOUBLE_TURN_CARD_COUNT +
+            DRAW_THREE_CARDS_COUNT
 
     fun createShuffledDrawPile(seed: Long? = null): DrawPile {
         val random = seed?.let { Random(it) } ?: Random.Default
@@ -43,7 +50,9 @@ object SkyjoDeckFactory {
                     SkyjoCard.ActionCard.SwapOwnCards(id)
                 index < DEFENSE_CARD_COUNT + ENLIGHTENMENT_CARD_COUNT + PLAYER_SWAP_CARD_COUNT + SWAP_OWN_CARDS_COUNT + DOUBLE_TURN_CARD_COUNT ->
                     SkyjoCard.ActionCard.DoubleTurn(id)
-                else -> SkyjoCard.ActionCard.Placeholder(id)
+                index < DEFENSE_CARD_COUNT + ENLIGHTENMENT_CARD_COUNT + PLAYER_SWAP_CARD_COUNT + SWAP_OWN_CARDS_COUNT + DOUBLE_TURN_CARD_COUNT + DRAW_THREE_CARDS_COUNT ->
+                    SkyjoCard.ActionCard.DrawThreeCards(id)
+                else -> error("unsupported action card index $index")
             }
         }.shuffled(random)
 

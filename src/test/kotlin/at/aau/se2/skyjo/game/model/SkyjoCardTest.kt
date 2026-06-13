@@ -54,6 +54,13 @@ class SkyjoCardTest {
     }
 
     @Test
+    fun drawThreeCardsScoreValueIsActionCardScore(){
+        val card = SkyjoCard.ActionCard.DrawThreeCards(id = 155)
+
+        assertEquals(ACTION_CARD_SCORE, card.scoreValue())
+    }
+
+    @Test
     fun numberCardDisplayLabelIsValue(){
         val card = SkyjoCard.NumberCard(id = 1, value = 12)
 
@@ -100,5 +107,12 @@ class SkyjoCardTest {
         val card = SkyjoCard.ActionCard.DoubleTurn(id = 154)
 
         assertEquals("DoubleTurn", card.displayLabel())
+    }
+
+    @Test
+    fun drawThreeCardsDisplayLabelIsDrawThreeCards(){
+        val card = SkyjoCard.ActionCard.DrawThreeCards(id = 155)
+
+        assertEquals("Draw Three Cards", card.displayLabel())
     }
 }

@@ -17,6 +17,7 @@ data class GameState(
     val finalTurnsRemaining: Int = 0,
     val roundResult: RoundResult? = null,
     val actionCardResult: ActionCardResult? = null,
+    val pendingActionCard: PendingActionCard? = null,
     val shuffleSeed: Long? = null,
     val shuffleCount: Int = 0,
     val pendingExtraTurns: Int = 0,

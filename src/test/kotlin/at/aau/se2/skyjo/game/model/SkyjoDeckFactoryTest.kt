@@ -28,7 +28,7 @@ class SkyjoDeckFactoryTest {
         val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
         val actionCards = drawPile.cards.filterIsInstance<SkyjoCard.ActionCard>()
 
-        assertEquals(21, actionCards.size)
+        assertEquals(18, actionCards.size)
     }
 
     @Test
@@ -60,13 +60,20 @@ class SkyjoDeckFactoryTest {
     }
 
     @Test
+    fun actionDrawPileContainsThreeDrawThreeCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(3, drawPile.cards.count { it is SkyjoCard.ActionCard.DrawThreeCards })
+    }
+
+    @Test
     fun cardsHaveUniqueId(){
         val drawPile = SkyjoDeckFactory.createShuffledDrawPile()
         val actionDrawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
         val ids = (drawPile.cards + actionDrawPile.cards).map{it.id}
 
-        assertEquals(171, ids.toSet().size) //toSet entfehrnt Duplikate
-        assertTrue(ids.all{it in 1..171})
+        assertEquals(168, ids.toSet().size) //toSet entfehrnt Duplikate
+        assertTrue(ids.all{it in 1..168})
     }
 
     @Test
@@ -80,8 +87,8 @@ class SkyjoDeckFactoryTest {
     fun actionDrawPileContainsOnlyActionCards(){
         val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
 
-        assertEquals(21, drawPile.cards.size)
-        assertTrue(drawPile.cards.all { it.id in 151..171 })
+        assertEquals(18, drawPile.cards.size)
+        assertTrue(drawPile.cards.all { it.id in 151..168 })
     }
 
     @Test
@@ -89,7 +96,13 @@ class SkyjoDeckFactoryTest {
         val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
 
         assertEquals(3, drawPile.cards.count { it is SkyjoCard.ActionCard.Enlightenment })
-        assertEquals(6, drawPile.cards.count { it is SkyjoCard.ActionCard.Placeholder })
+    }
+
+    @Test
+    fun actionDrawPileContainsNoPlaceholderCards(){
+        val drawPile = SkyjoDeckFactory.createShuffledActionDrawPile()
+
+        assertEquals(0, drawPile.cards.count { it is SkyjoCard.ActionCard.Placeholder })
     }
 
     @Test
