@@ -359,6 +359,9 @@ class SkyjoEngine {
         }
 
         val actionCard = currentPlayer.actionCards[actionCardIndex]
+        if (applyEffect && actionCard is SkyjoCard.ActionCard.Placeholder) {
+            throw InvalidMoveException("placeholder action cards cannot be played")
+        }
         if (applyEffect && actionCard is SkyjoCard.ActionCard.DrawThreeCards) {
             return startDrawThreeCardsAction(playableState, actionCardIndex, actionCard)
         }

@@ -676,7 +676,9 @@ class GameService @Autowired constructor(
                 playerId = playerState.id,
                 nickname = game.playerInfo[playerState.id] ?: playerState.id,
                 board = rows,
-                actionCards = playerState.actionCards.map(::toActionCardDto),
+                actionCards = playerState.actionCards
+                    .filterNot { it is SkyjoCard.ActionCard.Placeholder }
+                    .map(::toActionCardDto),
                 remainingCheatReports = remainingCheatReportsFor(game, playerState.id),
             )
         }
@@ -695,7 +697,9 @@ class GameService @Autowired constructor(
             players = players,
             discardTopCard = if (state.discardPile.size > 0) toCardDto(state.discardPile.topCard()) else null,
             drawnCard = state.drawnCard?.let { toCardDto(it) },
-            visibleActionCards = state.visibleActionCards.map(::toActionCardDto),
+            visibleActionCards = state.visibleActionCards
+                .filterNot { it is SkyjoCard.ActionCard.Placeholder }
+                .map(::toActionCardDto),
             actionDrawPileCount = state.actionDrawPile.size,
             roundResult = state.roundResult,
             roundNumber = game.roundNumber,
