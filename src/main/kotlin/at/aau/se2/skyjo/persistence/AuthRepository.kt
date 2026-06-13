@@ -254,6 +254,19 @@ class AuthRepository(private val jdbc: JdbcTemplate) {
         )
     }
 
+    fun clearCurrentLobby(lobbyId: String, now: Long) {
+        jdbc.update(
+            """
+            UPDATE user_presence
+            SET current_lobby_id = NULL,
+                updated_at = ?
+            WHERE current_lobby_id = ?
+            """.trimIndent(),
+            now,
+            lobbyId,
+        )
+    }
+
     fun getPresence(userId: String): UserPresenceRecord? =
         jdbc.query(
             """

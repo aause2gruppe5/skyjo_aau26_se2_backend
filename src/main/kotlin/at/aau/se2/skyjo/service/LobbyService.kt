@@ -36,6 +36,7 @@ class RandomLobbyIdGenerator : LobbyIdGenerator {
 
 class LobbyService(
     private val repository: LobbyRepository? = null,
+    private val authService: AuthService? = null,
     private val joinCodeGenerator: JoinCodeGenerator = RandomJoinCodeGenerator(),
     private val idGenerator: LobbyIdGenerator = RandomLobbyIdGenerator(),
     private val nowProvider: () -> Long = { System.currentTimeMillis() },
@@ -76,6 +77,9 @@ class LobbyService(
     }
 
     fun startGame(sessionId: String): LobbyState = lock.withLock {
+        if (state.status != LobbyStatus.WAITING) {
+            error("cannot start game: lobby is not waiting")
+        }
         val caller = state.players.find { it.sessionId == sessionId }
             ?: error("player not in lobby")
         if (!caller.isHost) {
@@ -190,6 +194,9 @@ class LobbyService(
 
     fun startGame(userId: String, lobbyId: String): LobbyState = lock.withLock {
         val lobby = getLobbyById(lobbyId) ?: error("lobby not found")
+        if (lobby.status != LobbyStatus.WAITING) {
+            error("cannot start game: lobby is not waiting")
+        }
         val caller = lobby.players.find { it.userId == userId } ?: error("player not in lobby")
         if (!caller.isHost) {
             error("only the host can start the game")
@@ -202,6 +209,17 @@ class LobbyService(
             ?: run { inMemoryLobbies[lobbyId] = lobby.copy(status = LobbyStatus.IN_GAME) }
 
         getLobbyById(lobbyId) ?: error("started lobby is not available")
+    }
+
+    fun closeLobby(lobbyId: String): LobbyState? = lock.withLock {
+        val lobby = getLobbyById(lobbyId) ?: return@withLock null
+        repository?.updateLobbyStatus(lobbyId, LobbyStatus.CLOSED, nowProvider())
+            ?: run {
+                lobby.players.map { it.userId }.forEach(inMemoryUserLobbyIds::remove)
+                inMemoryLobbies[lobbyId] = lobby.copy(status = LobbyStatus.CLOSED)
+            }
+        authService?.clearCurrentLobby(lobbyId)
+        getLobbyById(lobbyId)
     }
 
     fun getLobbyById(lobbyId: String): LobbyState? = lock.withLock {

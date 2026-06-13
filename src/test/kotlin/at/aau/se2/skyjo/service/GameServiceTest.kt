@@ -1185,6 +1185,20 @@ class GameServiceTest {
     }
 
     @Test
+    fun `completed lobby game works when no lobby service is configured`() {
+        service = GameService(engine, null)
+        service.startGame("lobby-1", players, GameConfig(maxRounds = 1))
+        val gameState = getInternalGameState(service)
+        val finishedState = engine.finishRound(gameState.copy(finisherPlayerId = gameState.currentPlayerId!!))
+
+        val result = service.handleRoundFinished(finishedState)
+
+        assertTrue(result.gameOver)
+        assertEquals("lobby-1", result.lobbyId)
+        assertNull(service.getCurrentState(player1Id))
+    }
+
+    @Test
     fun `handleRoundFinished sets gameOver when player reaches targetScore`() {
         service.startGame(players, GameConfig(maxRounds = 10, targetScore = 0))
         val gameState = getInternalGameState(service)

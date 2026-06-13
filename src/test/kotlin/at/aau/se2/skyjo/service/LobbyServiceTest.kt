@@ -114,6 +114,17 @@ class LobbyServiceTest {
     }
 
     @Test
+    fun `starting legacy lobby twice throws error`() {
+        service.join("s1", "Alice")
+        service.join("s2", "Bob")
+        service.startGame("s1")
+
+        val ex = assertThrows<IllegalStateException> { service.startGame("s1") }
+
+        assertTrue(ex.message!!.contains("not waiting"))
+    }
+
+    @Test
     fun `non-lobby player cannot start game`() {
         service.join("s1", "Alice")
         service.join("s2", "Bob")
@@ -210,5 +221,25 @@ class LobbyServiceTest {
 
         val newLobby = service.createLobby(authUser("user-a", "Alice"))
         assertNotNull(newLobby.lobbyId)
+    }
+
+    @Test
+    fun `closeLobby clears in-memory current lobby mappings`() {
+        val oldLobby = service.createLobby(authUser("user-a", "Alice"))
+        val oldLobbyId = oldLobby.lobbyId!!
+        service.joinLobby(authUser("user-b", "Bob"), oldLobby.joinCode!!)
+        service.closeLobby(oldLobbyId)
+        val newLobby = service.createLobby(authUser("user-c", "Cara"))
+
+        val joined = service.joinLobby(authUser("user-a", "Alice"), newLobby.joinCode!!)
+
+        assertEquals(LobbyStatus.CLOSED, service.getLobbyById(oldLobbyId)?.status)
+        assertNull(service.getCurrentLobbyForUser("user-b"))
+        assertEquals(newLobby.lobbyId, joined.lobbyId)
+    }
+
+    @Test
+    fun `closeLobby returns null for unknown lobby`() {
+        assertNull(service.closeLobby("missing-lobby"))
     }
 }

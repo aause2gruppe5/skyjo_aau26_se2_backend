@@ -51,6 +51,7 @@ class GameService @Autowired constructor(
     private val engine: SkyjoEngine,
     private val gameRepository: GameRepository?,
     private val statsService: StatsService?,
+    private val lobbyService: LobbyService? = null,
 ) {
 
     private data class ManagedGame(
@@ -94,7 +95,7 @@ class GameService @Autowired constructor(
     private val sessionAliases: MutableMap<String, String> = mutableMapOf()
     private val disconnectedNicknames: MutableSet<String> = mutableSetOf()
 
-    constructor(engine: SkyjoEngine, gameRepository: GameRepository?) : this(engine, gameRepository, null)
+    constructor(engine: SkyjoEngine, gameRepository: GameRepository?) : this(engine, gameRepository, null, null)
 
     init {
         gameRepository?.loadActiveGames()?.forEach { persisted ->
@@ -475,6 +476,7 @@ class GameService @Autowired constructor(
             game.completed = true
             gameRepository?.saveGame(game.gameId, game.lobbyId, finishedState, completed = true)
             gameRepository?.deletePlayerSessionsForGame(game.gameId)
+            game.lobbyId?.let { lobbyService?.closeLobby(it) }
             removePlayerIndexes(game)
             recordFinalStatsOnce(game)
             syncLegacyIfCurrent(game)

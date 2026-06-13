@@ -137,6 +137,20 @@ class MultiLobbyServiceTest {
     }
 
     @Test
+    fun `startGame rejects lobbies that are already in game`() {
+        val lobby = service.createLobby(user("user-1", "Alice"))
+        val lobbyId = lobby.lobbyId!!
+        service.joinLobby(user("user-2", "Bob"), lobby.joinCode!!)
+        service.startGame(userId = "user-1", lobbyId = lobbyId)
+
+        val error = assertThrows<IllegalStateException> {
+            service.startGame(userId = "user-1", lobbyId = lobbyId)
+        }
+
+        assertTrue(error.message.orEmpty().contains("not waiting"))
+    }
+
+    @Test
     fun `startGame rejects non-host users`() {
         val lobby = service.createLobby(user("user-1", "Alice"))
         service.joinLobby(user("user-2", "Bob"), lobby.joinCode!!)
