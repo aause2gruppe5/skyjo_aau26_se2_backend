@@ -8,7 +8,9 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor
 import org.springframework.messaging.simp.SimpMessageSendingOperations
+import org.springframework.messaging.support.MessageBuilder
 import org.springframework.web.socket.messaging.SessionConnectedEvent
 import org.springframework.web.socket.messaging.SessionDisconnectEvent
 import java.security.Principal
@@ -110,6 +112,25 @@ class WebSocketEventListenerTest {
             listener.refreshActiveWebSocketPresence()
 
             verify(exactly = 0) { authService.markUserConnected(any(), any()) }
+        }
+
+        @Test
+        fun `duplicate disconnect for one websocket session does not clear another active session`() {
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+            listener.handleWebSocketConnectListener(connectedEvent("session-1"))
+            listener.handleWebSocketConnectListener(connectedEvent("session-2"))
+            clearMocks(authService)
+
+            listener.handleWebSocketDisconnectListener(disconnectEvent("session-1"))
+            listener.handleWebSocketDisconnectListener(disconnectEvent("session-1"))
+
+            verify(exactly = 0) { authService.markUserDisconnected(playerId) }
+
+            listener.handleWebSocketDisconnectListener(disconnectEvent("session-2"))
+
+            verify(exactly = 1) { authService.markUserDisconnected(playerId) }
         }
 
         @Test
@@ -286,4 +307,21 @@ class WebSocketEventListenerTest {
             verify { messagingTemplate.convertAndSend("/topic/lobbies/XYZ789", any<LobbyUpdateMessage>()) }
         }
     }
+
+    private fun connectedEvent(sessionId: String): SessionConnectedEvent =
+        mockk<SessionConnectedEvent> {
+            every { user } returns principal
+            every { message } returns MessageBuilder.createMessage(
+                ByteArray(0),
+                SimpMessageHeaderAccessor.create().apply {
+                    setSessionId(sessionId)
+                }.messageHeaders,
+            )
+        }
+
+    private fun disconnectEvent(sessionId: String): SessionDisconnectEvent =
+        mockk<SessionDisconnectEvent> {
+            every { user } returns principal
+            every { getSessionId() } returns sessionId
+        }
 }

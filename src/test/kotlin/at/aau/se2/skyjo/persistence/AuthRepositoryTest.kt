@@ -126,6 +126,40 @@ class AuthRepositoryTest {
     }
 
     @Test
+    fun `initSchema migrates legacy presence table with last seen column`() {
+        val dataSource = SingleConnectionDataSource("jdbc:sqlite::memory:", true)
+        val jdbc = JdbcTemplate(dataSource)
+        jdbc.execute(
+            """
+            CREATE TABLE user_presence (
+                user_id TEXT PRIMARY KEY,
+                connected INTEGER NOT NULL DEFAULT 0,
+                current_lobby_id TEXT,
+                updated_at INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        jdbc.update(
+            """
+            INSERT INTO user_presence (user_id, connected, current_lobby_id, updated_at)
+            VALUES (?, 1, ?, ?)
+            """.trimIndent(),
+            "user-legacy",
+            "lobby-1",
+            2_000L,
+        )
+
+        val legacyRepo = AuthRepository(jdbc)
+        legacyRepo.initSchema()
+
+        val presence = legacyRepo.getPresence("user-legacy")
+        assertTrue(presence?.connected == true)
+        assertEquals("lobby-1", presence?.currentLobbyId)
+        assertEquals(2_000L, presence?.updatedAt)
+        assertEquals(0L, presence?.lastSeenAt)
+    }
+
+    @Test
     fun `current lobby can be cleared without changing presence state`() {
         repo.createUser("user-1", "Alice", "hash", now = 1_000L)
         repo.createUser("user-2", "Bob", "hash", now = 1_000L)

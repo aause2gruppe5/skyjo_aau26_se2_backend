@@ -10,6 +10,7 @@ import at.aau.se2.skyjo.service.LobbyService
 import org.slf4j.LoggerFactory
 import org.springframework.context.event.EventListener
 import org.springframework.messaging.simp.SimpMessageSendingOperations
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.messaging.SessionConnectedEvent
@@ -25,6 +26,7 @@ class WebSocketEventListener(
 ) {
 
     private val logger = LoggerFactory.getLogger(WebSocketEventListener::class.java)
+    private val activeWebSocketUsersBySessionId = ConcurrentHashMap<String, String>()
     private val activeWebSocketSessionsByUser = ConcurrentHashMap<String, Int>()
 
     @EventListener
@@ -32,7 +34,7 @@ class WebSocketEventListener(
         val userId = event.user?.name
         logger.info("New WebSocket connection: principal=$userId")
         if (userId != null) {
-            markSessionConnected(userId)
+            markSessionConnected(userId, event.sessionId())
             refreshPresence(userId)
         }
     }
@@ -40,8 +42,9 @@ class WebSocketEventListener(
     @EventListener
     fun handleWebSocketDisconnectListener(event: SessionDisconnectEvent) {
         val playerId = event.user?.name ?: return
-        if (markSessionDisconnected(playerId)) {
-            authService?.markUserDisconnected(playerId)
+        val disconnectedUserId = markSessionDisconnected(playerId, event.sessionId())
+        if (disconnectedUserId != null) {
+            authService?.markUserDisconnected(disconnectedUserId)
         }
         val disconnectedGameState = gameService?.markPlayerDisconnected(playerId)
         if (disconnectedGameState != null) {
@@ -76,23 +79,38 @@ class WebSocketEventListener(
         authService?.markUserConnected(userId, currentLobbyId)
     }
 
-    private fun markSessionConnected(userId: String) {
+    private fun markSessionConnected(userId: String, sessionId: String?) {
+        if (sessionId != null && activeWebSocketUsersBySessionId.putIfAbsent(sessionId, userId) != null) {
+            return
+        }
         activeWebSocketSessionsByUser.compute(userId) { _, current -> (current ?: 0) + 1 }
     }
 
-    private fun markSessionDisconnected(userId: String): Boolean {
-        var shouldMarkDisconnected = true
-        activeWebSocketSessionsByUser.compute(userId) { _, current ->
+    private fun markSessionDisconnected(userId: String, sessionId: String?): String? {
+        val countedUserId = if (sessionId == null) {
+            userId
+        } else {
+            activeWebSocketUsersBySessionId.remove(sessionId) ?: return null
+        }
+
+        var shouldMarkDisconnected = false
+        activeWebSocketSessionsByUser.compute(countedUserId) { _, current ->
             val next = (current ?: 1) - 1
             if (next > 0) {
-                shouldMarkDisconnected = false
                 next
             } else {
+                shouldMarkDisconnected = true
                 null
             }
         }
-        return shouldMarkDisconnected
+        return if (shouldMarkDisconnected) countedUserId else null
     }
+
+    private fun SessionConnectedEvent.sessionId(): String? =
+        runCatching { SimpMessageHeaderAccessor.getSessionId(message.headers) }.getOrNull()
+
+    private fun SessionDisconnectEvent.sessionId(): String? =
+        runCatching { sessionId }.getOrNull()
 
     private companion object {
         const val WEBSOCKET_PRESENCE_REFRESH_MS = 20_000L

@@ -90,7 +90,7 @@ class AuthRepository(private val jdbc: JdbcTemplate) {
             )
             """.trimIndent()
         )
-        runCatching {
+        if (!userPresenceHasLastSeenAtColumn()) {
             jdbc.execute("ALTER TABLE user_presence ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0")
         }
     }
@@ -327,4 +327,10 @@ class AuthRepository(private val jdbc: JdbcTemplate) {
         val value = getLong(column)
         return if (wasNull()) null else value
     }
+
+    private fun userPresenceHasLastSeenAtColumn(): Boolean =
+        jdbc.query(
+            "PRAGMA table_info(user_presence)",
+            { rs, _ -> rs.getString("name") },
+        ).any { it == "last_seen_at" }
 }
