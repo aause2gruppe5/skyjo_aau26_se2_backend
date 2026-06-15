@@ -77,6 +77,42 @@ class WebSocketEventListenerTest {
         }
 
         @Test
+        fun `refreshes active websocket presence periodically`() {
+            val event = mockk<SessionConnectedEvent>()
+            every { event.user } returns principal
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+            listener.handleWebSocketConnectListener(event)
+            clearMocks(authService)
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns LobbyState(
+                lobbyId = "lobby-2",
+                joinCode = "XYZ789",
+            )
+
+            listener.refreshActiveWebSocketPresence()
+
+            verify { authService.markUserConnected(playerId, "lobby-2") }
+        }
+
+        @Test
+        fun `does not refresh disconnected websocket sessions`() {
+            val connectEvent = mockk<SessionConnectedEvent>()
+            val disconnectEvent = mockk<SessionDisconnectEvent>()
+            every { connectEvent.user } returns principal
+            every { disconnectEvent.user } returns principal
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+            listener.handleWebSocketConnectListener(connectEvent)
+            listener.handleWebSocketDisconnectListener(disconnectEvent)
+            clearMocks(authService)
+
+            listener.refreshActiveWebSocketPresence()
+
+            verify(exactly = 0) { authService.markUserConnected(any(), any()) }
+        }
+
+        @Test
         fun `wirft keinen Fehler, wenn User null ist`() {
             val event = mockk<SessionConnectedEvent>()
             every { event.user } returns null

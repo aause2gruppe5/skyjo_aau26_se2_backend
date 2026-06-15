@@ -3,6 +3,7 @@ package at.aau.se2.skyjo.persistence
 import at.aau.se2.skyjo.model.social.FriendRequestStatus
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -63,11 +64,25 @@ class FriendRepositoryTest {
     fun `listFriends reports stale presence as offline`() {
         repository.createFriendship("user-a", "user-b", now = 1_000L)
         repository.createFriendship("user-b", "user-a", now = 1_000L)
-        authRepository.setPresence("user-b", connected = true, currentLobbyId = null, now = 2_000L)
+        authRepository.setPresence("user-b", connected = true, currentLobbyId = "lobby-1", now = 2_000L)
 
         val friends = repository.listFriends("user-a", onlineSince = 5_000L)
 
         assertFalse(friends.single().online)
+        assertNull(friends.single().currentLobbyId)
+    }
+
+    @Test
+    fun `listFriends does not refresh online state from non-presence row updates`() {
+        repository.createFriendship("user-a", "user-b", now = 1_000L)
+        repository.createFriendship("user-b", "user-a", now = 1_000L)
+        authRepository.setPresence("user-b", connected = true, currentLobbyId = "lobby-1", now = 2_000L)
+
+        authRepository.clearCurrentLobby("lobby-1", now = 9_000L)
+        val friends = repository.listFriends("user-a", onlineSince = 5_000L)
+
+        assertFalse(friends.single().online)
+        assertNull(friends.single().currentLobbyId)
     }
 
     @Test
