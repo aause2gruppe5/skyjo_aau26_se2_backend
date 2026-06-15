@@ -2,6 +2,7 @@ package at.aau.se2.skyjo.persistence
 
 import at.aau.se2.skyjo.model.social.FriendRequestStatus
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -51,11 +52,46 @@ class FriendRepositoryTest {
         repository.createFriendship("user-b", "user-a", now = 1_000L)
         authRepository.setPresence("user-b", connected = true, currentLobbyId = "lobby-1", now = 2_000L)
 
-        val friends = repository.listFriends("user-a")
+        val friends = repository.listFriends("user-a", onlineSince = 1_500L)
 
         assertEquals("Bob", friends.single().username)
         assertTrue(friends.single().online)
         assertEquals("lobby-1", friends.single().currentLobbyId)
+    }
+
+    @Test
+    fun `listFriends reports stale presence as offline`() {
+        repository.createFriendship("user-a", "user-b", now = 1_000L)
+        repository.createFriendship("user-b", "user-a", now = 1_000L)
+        authRepository.setPresence("user-b", connected = true, currentLobbyId = null, now = 2_000L)
+
+        val friends = repository.listFriends("user-a", onlineSince = 5_000L)
+
+        assertFalse(friends.single().online)
+    }
+
+    @Test
+    fun `touchPresence keeps friend online without clobbering current lobby`() {
+        repository.createFriendship("user-a", "user-b", now = 1_000L)
+        repository.createFriendship("user-b", "user-a", now = 1_000L)
+        authRepository.setPresence("user-b", connected = true, currentLobbyId = "lobby-1", now = 2_000L)
+
+        authRepository.touchPresence("user-b", now = 9_000L)
+        val friends = repository.listFriends("user-a", onlineSince = 8_000L)
+
+        assertTrue(friends.single().online)
+        assertEquals("lobby-1", friends.single().currentLobbyId)
+    }
+
+    @Test
+    fun `touchPresence marks a user online on first contact`() {
+        repository.createFriendship("user-a", "user-b", now = 1_000L)
+        repository.createFriendship("user-b", "user-a", now = 1_000L)
+
+        authRepository.touchPresence("user-b", now = 9_000L)
+        val friends = repository.listFriends("user-a", onlineSince = 8_000L)
+
+        assertTrue(friends.single().online)
     }
 
     private fun createUser(userId: String, username: String) {

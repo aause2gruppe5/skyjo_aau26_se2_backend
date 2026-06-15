@@ -39,6 +39,16 @@ class FriendController(
             ResponseEntity.ok(friendService.listFriends(user) as Any)
         }.getOrElse(::toSocialError)
 
+    @PostMapping("/api/social/heartbeat")
+    fun heartbeat(
+        @RequestHeader("Authorization") authorizationHeader: String?,
+    ): ResponseEntity<Any> =
+        runCatching {
+            val user = authSupport.requireUser(authorizationHeader)
+            friendService.recordHeartbeat(user)
+            ResponseEntity.noContent().build<Any>()
+        }.getOrElse(::toSocialError)
+
     @GetMapping("/api/friends/requests")
     fun listFriendRequests(
         @RequestHeader("Authorization") authorizationHeader: String?,

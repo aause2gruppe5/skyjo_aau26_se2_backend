@@ -14,6 +14,7 @@ import at.aau.se2.skyjo.service.UnauthorizedException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.springframework.http.HttpStatus
 
@@ -59,6 +60,25 @@ class FriendControllerTest {
 
         assertEquals(HttpStatus.OK, result.statusCode)
         assertEquals("Bob", (result.body as List<*>).filterIsInstance<FriendDto>().single().username)
+    }
+
+    @Test
+    fun `heartbeat records presence and returns no content`() {
+        whenever(authService.requireUser("token")).thenReturn(user())
+
+        val result = controller.heartbeat("Bearer token")
+
+        assertEquals(HttpStatus.NO_CONTENT, result.statusCode)
+        verify(friendService).recordHeartbeat(user())
+    }
+
+    @Test
+    fun `heartbeat returns unauthorized for invalid token`() {
+        whenever(authService.requireUser("bad")).thenThrow(UnauthorizedException())
+
+        val result = controller.heartbeat("Bearer bad")
+
+        assertEquals(HttpStatus.UNAUTHORIZED, result.statusCode)
     }
 
     @Test

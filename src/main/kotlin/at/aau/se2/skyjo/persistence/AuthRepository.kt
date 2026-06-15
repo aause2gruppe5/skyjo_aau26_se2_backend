@@ -254,6 +254,25 @@ class AuthRepository(private val jdbc: JdbcTemplate) {
         )
     }
 
+    /**
+     * Refreshes a user's presence without clobbering their current lobby. Used by the
+     * foreground heartbeat so a user counts as online while in the app, even when not
+     * connected to a lobby websocket.
+     */
+    fun touchPresence(userId: String, now: Long) {
+        jdbc.update(
+            """
+            INSERT INTO user_presence (user_id, connected, current_lobby_id, updated_at)
+            VALUES (?, 1, NULL, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                connected = 1,
+                updated_at = excluded.updated_at
+            """.trimIndent(),
+            userId,
+            now,
+        )
+    }
+
     fun clearCurrentLobby(lobbyId: String, now: Long) {
         jdbc.update(
             """

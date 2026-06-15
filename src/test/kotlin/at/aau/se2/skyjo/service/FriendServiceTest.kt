@@ -84,6 +84,42 @@ class FriendServiceTest {
     }
 
     @Test
+    fun `recordHeartbeat marks the user online in their friends list`() {
+        val request = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+        service.acceptFriendRequest(user("user-b", "Bob"), request.requestId)
+
+        service.recordHeartbeat(user("user-b", "Bob"))
+
+        assertTrue(service.listFriends(user("user-a", "Alice")).single { it.username == "Bob" }.online)
+    }
+
+    @Test
+    fun `listFriends reports a friend without presence as offline`() {
+        val request = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+        service.acceptFriendRequest(user("user-b", "Bob"), request.requestId)
+
+        assertEquals(false, service.listFriends(user("user-a", "Alice")).single().online)
+    }
+
+    @Test
+    fun `listFriends reports a friend as offline once heartbeat is older than the TTL`() {
+        val request = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
+        service.acceptFriendRequest(user("user-b", "Bob"), request.requestId)
+        service.recordHeartbeat(user("user-b", "Bob")) // recorded at now = 1_000L
+
+        val laterService = FriendService(
+            repository = repository,
+            authRepository = authRepository,
+            requestIdGenerator = object : FriendRequestIdGenerator {
+                override fun generateId(): String = "unused"
+            },
+            nowProvider = { 1_000_000L },
+        )
+
+        assertEquals(false, laterService.listFriends(user("user-a", "Alice")).single().online)
+    }
+
+    @Test
     fun `sendFriendRequest rejects duplicate friendship`() {
         val request = service.sendFriendRequest(user("user-a", "Alice"), toUserId = "user-b")
         service.acceptFriendRequest(user("user-b", "Bob"), request.requestId)

@@ -168,10 +168,17 @@ class FriendRepository(private val jdbc: JdbcTemplate) {
             friendUserId,
         ) != 0
 
-    fun listFriends(userId: String): List<FriendUserRecord> =
+    /**
+     * Lists a user's friends. A friend counts as online only when their presence is
+     * connected AND was refreshed at or after [onlineSince] (now minus the presence TTL),
+     * so stale presence rows from crashed/backgrounded clients no longer read as online.
+     */
+    fun listFriends(userId: String, onlineSince: Long): List<FriendUserRecord> =
         jdbc.query(
             """
-            SELECT u.user_id, u.username, COALESCE(p.connected, 0) AS connected, p.current_lobby_id
+            SELECT u.user_id, u.username,
+                   CASE WHEN p.connected = 1 AND p.updated_at >= ? THEN 1 ELSE 0 END AS connected,
+                   p.current_lobby_id
             FROM friendships f
             JOIN users u ON u.user_id = f.friend_user_id
             LEFT JOIN user_presence p ON p.user_id = u.user_id
@@ -179,6 +186,7 @@ class FriendRepository(private val jdbc: JdbcTemplate) {
             ORDER BY u.username COLLATE NOCASE ASC
             """.trimIndent(),
             ::toFriendUserRecord,
+            onlineSince,
             userId,
         )
 

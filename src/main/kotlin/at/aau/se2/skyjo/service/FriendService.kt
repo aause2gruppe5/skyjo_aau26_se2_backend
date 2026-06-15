@@ -59,7 +59,11 @@ class FriendService @Autowired constructor(
     }
 
     fun listFriends(user: AuthUserDto): List<FriendDto> =
-        repository.listFriends(user.userId).map { it.toFriendDto() }
+        repository.listFriends(user.userId, onlineSince = nowProvider() - PRESENCE_TTL_MS).map { it.toFriendDto() }
+
+    fun recordHeartbeat(user: AuthUserDto) {
+        authRepository.touchPresence(user.userId, nowProvider())
+    }
 
     fun listFriendRequests(user: AuthUserDto): FriendRequestsResponse =
         FriendRequestsResponse(
@@ -150,5 +154,12 @@ class FriendService @Autowired constructor(
 
     private companion object {
         const val SEARCH_LIMIT = 20
+
+        /**
+         * How long a presence row stays "online" after its last refresh. Clients send a
+         * heartbeat roughly every 20s while foregrounded; this leaves room for one missed
+         * beat before a friend is shown offline.
+         */
+        const val PRESENCE_TTL_MS = 60_000L
     }
 }
