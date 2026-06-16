@@ -134,6 +134,23 @@ class WebSocketEventListenerTest {
         }
 
         @Test
+        fun `disconnect for one of multiple websocket sessions does not leave game or lobby`() {
+            val listenerWithGame = WebSocketEventListener(messagingTemplate, lobbyService, gameService, authService)
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+            listenerWithGame.handleWebSocketConnectListener(connectedEvent("session-1"))
+            listenerWithGame.handleWebSocketConnectListener(connectedEvent("session-2"))
+            clearMocks(authService, gameService, lobbyService, messagingTemplate)
+
+            listenerWithGame.handleWebSocketDisconnectListener(disconnectEvent("session-1"))
+
+            verify(exactly = 0) { authService.markUserDisconnected(any()) }
+            verify { gameService wasNot Called }
+            verify { lobbyService wasNot Called }
+            verify { messagingTemplate wasNot Called }
+        }
+
+        @Test
         fun `wirft keinen Fehler, wenn User null ist`() {
             val event = mockk<SessionConnectedEvent>()
             every { event.user } returns null

@@ -42,10 +42,8 @@ class WebSocketEventListener(
     @EventListener
     fun handleWebSocketDisconnectListener(event: SessionDisconnectEvent) {
         val playerId = event.user?.name ?: return
-        val disconnectedUserId = markSessionDisconnected(playerId, event.sessionId())
-        if (disconnectedUserId != null) {
-            authService?.markUserDisconnected(disconnectedUserId)
-        }
+        val disconnectedUserId = markSessionDisconnected(playerId, event.sessionId()) ?: return
+        authService?.markUserDisconnected(disconnectedUserId)
         val disconnectedGameState = gameService?.markPlayerDisconnected(playerId)
         if (disconnectedGameState != null) {
             messagingTemplate.convertAndSend(disconnectedGameState.topicPath(), disconnectedGameState)
