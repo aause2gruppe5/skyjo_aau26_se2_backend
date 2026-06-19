@@ -28,21 +28,28 @@ class WebSocketEventListener(
     private val logger = LoggerFactory.getLogger(WebSocketEventListener::class.java)
     private val activeWebSocketUsersBySessionId = ConcurrentHashMap<String, String>()
     private val activeWebSocketSessionsByUser = ConcurrentHashMap<String, Int>()
+    private val authenticatedLobbyIdsBySessionId = ConcurrentHashMap<String, String>()
 
     @EventListener
     fun handleWebSocketConnectListener(event: SessionConnectedEvent) {
         val userId = event.user?.name
         logger.info("New WebSocket connection: principal=$userId")
         if (userId != null) {
-            markSessionConnected(userId, event.sessionId())
-            refreshPresence(userId)
+            val sessionId = event.sessionId()
+            markSessionConnected(userId, sessionId)
+            val lobbyId = refreshPresence(userId)
+            if (sessionId != null && lobbyId != null) {
+                authenticatedLobbyIdsBySessionId[sessionId] = lobbyId
+            }
         }
     }
 
     @EventListener
     fun handleWebSocketDisconnectListener(event: SessionDisconnectEvent) {
         val playerId = event.user?.name ?: return
-        val disconnectedUserId = markSessionDisconnected(playerId, event.sessionId()) ?: return
+        val sessionId = event.sessionId()
+        val sessionLobbyId = sessionId?.let(authenticatedLobbyIdsBySessionId::remove)
+        val disconnectedUserId = markSessionDisconnected(playerId, sessionId) ?: return
         authService?.markUserDisconnected(disconnectedUserId)
         val disconnectedGameState = gameService?.markPlayerDisconnected(playerId)
         if (disconnectedGameState != null) {
@@ -53,8 +60,14 @@ class WebSocketEventListener(
             logger.info("Player disconnected and removed from lobby: $playerId")
             messagingTemplate.convertAndSend("/topic/lobby", updatedState.toUpdateMessage())
         }
-        val authenticatedLobby = runCatching { lobbyService.getCurrentLobbyForUser(playerId) }.getOrNull()
-        if (authenticatedLobby?.lobbyId != null) {
+        val authenticatedLobby = if (sessionId == null) {
+            runCatching { lobbyService.getCurrentLobbyForUser(playerId) }.getOrNull()
+        } else {
+            sessionLobbyId?.let { lobbyId ->
+                runCatching { lobbyService.getLobbyById(lobbyId) }.getOrNull()
+            }
+        }
+        if (authenticatedLobby?.lobbyId != null && authenticatedLobby.players.any { it.userId == playerId }) {
             val updatedLobby = lobbyService.leaveLobby(playerId, authenticatedLobby.lobbyId)
             logger.info("Authenticated player disconnected and removed from lobby: $playerId")
             updatedLobby.joinCode?.let { code ->
@@ -72,9 +85,10 @@ class WebSocketEventListener(
         }
     }
 
-    private fun refreshPresence(userId: String) {
+    private fun refreshPresence(userId: String): String? {
         val currentLobbyId = runCatching { lobbyService.getCurrentLobbyForUser(userId)?.lobbyId }.getOrNull()
         authService?.markUserConnected(userId, currentLobbyId)
+        return currentLobbyId
     }
 
     private fun markSessionConnected(userId: String, sessionId: String?) {

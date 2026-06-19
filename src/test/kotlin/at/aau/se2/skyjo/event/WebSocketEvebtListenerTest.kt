@@ -151,6 +151,51 @@ class WebSocketEventListenerTest {
         }
 
         @Test
+        fun `disconnecting invite-only socket does not close lobby created after socket connected`() {
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+            listener.handleWebSocketConnectListener(connectedEvent("invite-session"))
+
+            val newlyCreatedLobby = LobbyState(
+                lobbyId = "lobby-1",
+                joinCode = "ABC123",
+                players = listOf(
+                    LobbyPlayer(sessionId = playerId, nickname = "Alice", isHost = true, userId = playerId),
+                ),
+            )
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns newlyCreatedLobby
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+
+            listener.handleWebSocketDisconnectListener(disconnectEvent("invite-session"))
+
+            verify(exactly = 0) { lobbyService.leaveLobby(any(), any()) }
+            verify(exactly = 0) { lobbyService.getLobbyById(any()) }
+        }
+
+        @Test
+        fun `disconnecting lobby socket removes player from lobby associated at connect time`() {
+            val lobby = LobbyState(
+                lobbyId = "lobby-1",
+                joinCode = "ABC123",
+                players = listOf(
+                    LobbyPlayer(sessionId = playerId, nickname = "Alice", isHost = true, userId = playerId),
+                ),
+            )
+            val closedLobby = lobby.copy(players = emptyList(), status = LobbyStatus.CLOSED)
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns lobby
+            every { lobbyService.getLobbyById("lobby-1") } returns lobby
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+            every { lobbyService.leaveLobby(playerId, "lobby-1") } returns closedLobby
+            listener.handleWebSocketConnectListener(connectedEvent("lobby-session"))
+
+            listener.handleWebSocketDisconnectListener(disconnectEvent("lobby-session"))
+
+            verify { lobbyService.leaveLobby(playerId, "lobby-1") }
+            verify { messagingTemplate.convertAndSend("/topic/lobbies/ABC123", any<LobbyUpdateMessage>()) }
+        }
+
+        @Test
         fun `wirft keinen Fehler, wenn User null ist`() {
             val event = mockk<SessionConnectedEvent>()
             every { event.user } returns null
