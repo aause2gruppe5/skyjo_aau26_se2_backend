@@ -187,6 +187,19 @@ class MultiLobbyServiceTest {
     }
 
     @Test
+    fun `joinLobby lets existing members rejoin an in game lobby by code`() {
+        val lobby = service.createLobby(user("user-1", "Alice"))
+        service.joinLobby(user("user-2", "Bob"), lobby.joinCode!!)
+        service.startGame(userId = "user-1", lobbyId = lobby.lobbyId!!)
+
+        val rejoined = service.joinLobby(user("user-2", "Bob"), lobby.joinCode!!)
+
+        assertEquals(LobbyStatus.IN_GAME, rejoined.status)
+        assertEquals(lobby.lobbyId, rejoined.lobbyId)
+        assertEquals(listOf("Alice", "Bob"), rejoined.players.map { it.nickname })
+    }
+
+    @Test
     fun `joinLobby rejects closed lobbies`() {
         val lobby = service.createLobby(user("user-1", "Alice"))
         service.closeLobby(lobby.lobbyId!!)

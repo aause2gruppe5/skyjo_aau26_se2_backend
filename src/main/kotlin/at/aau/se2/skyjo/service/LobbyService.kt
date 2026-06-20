@@ -129,7 +129,6 @@ class LobbyService(
 
     fun joinLobby(user: AuthUserDto, joinCode: String): LobbyState = lock.withLock {
         val lobby = getLobbyByJoinCode(joinCode) ?: error("lobby not found")
-        lobby.requireOpenForNewPlayers("join")
         val existingLobby = getCurrentLobbyForUser(user.userId)
         if (existingLobby != null && existingLobby.lobbyId != lobby.lobbyId) {
             error("user is already in a lobby")
@@ -137,6 +136,7 @@ class LobbyService(
         if (lobby.players.any { it.userId == user.userId }) {
             return lobby
         }
+        lobby.requireOpenForNewPlayers("join")
         lobby.requireAvailableSlot("join")
 
         val lobbyId = lobby.lobbyId ?: error("lobby id is missing")
