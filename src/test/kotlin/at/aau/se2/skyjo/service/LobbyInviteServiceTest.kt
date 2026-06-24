@@ -117,7 +117,20 @@ class LobbyInviteServiceTest {
             service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
         }
 
-        assertTrue(error.message.orEmpty().contains("not waiting"))
+        assertTrue(error.message.orEmpty().contains("in progress"))
+    }
+
+    @Test
+    fun `failed one-player start leaves lobby invitable`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+
+        assertThrows<IllegalStateException> {
+            lobbyService.startGame(userId = "user-a", lobbyId = lobby.lobbyId!!)
+        }
+        val invite = service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-b")
+
+        assertEquals(LobbyInviteStatus.PENDING, invite.status)
+        assertEquals("ABC123", invite.joinCode)
     }
 
     @Test
@@ -175,7 +188,29 @@ class LobbyInviteServiceTest {
             service.acceptInvite(user("user-b", "Bob"), invite.inviteId)
         }
 
-        assertTrue(error.message.orEmpty().contains("not waiting"))
+        assertTrue(error.message.orEmpty().contains("in progress"))
+    }
+
+    @Test
+    fun `createInvite rejects full lobbies`() {
+        val lobby = lobbyService.createLobby(user("user-a", "Alice"))
+        val additionalUsers = listOf(
+            user("user-c", "Cara"),
+            user("user-d", "Dan"),
+            user("user-e", "Eve"),
+            user("user-f", "Finn"),
+            user("user-g", "Gina"),
+        )
+        additionalUsers.drop(1).forEach { createUser(it.userId, it.username) }
+        additionalUsers.forEach { lobbyService.joinLobby(it, lobby.joinCode!!) }
+        createUser("user-h", "Hana")
+        friendRepository.createFriendship("user-a", "user-h", now = 1_000L)
+
+        val error = assertThrows<IllegalStateException> {
+            service.createInvite(user("user-a", "Alice"), lobby.lobbyId!!, toUserId = "user-h")
+        }
+
+        assertTrue(error.message.orEmpty().contains("full"))
     }
 
     @Test

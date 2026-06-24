@@ -34,6 +34,7 @@ data class UserPresenceRecord(
     val connected: Boolean,
     val currentLobbyId: String?,
     val updatedAt: Long,
+    val lastSeenAt: Long,
 )
 
 @Repository
@@ -84,10 +85,14 @@ class AuthRepository(private val jdbc: JdbcTemplate) {
                 connected INTEGER NOT NULL DEFAULT 0,
                 current_lobby_id TEXT,
                 updated_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY(user_id) REFERENCES users(user_id)
             )
             """.trimIndent()
         )
+        if (!userPresenceHasLastSeenAtColumn()) {
+            jdbc.execute("ALTER TABLE user_presence ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0")
+        }
     }
 
     fun createUser(userId: String, username: String, passwordHash: String, now: Long) {
@@ -240,16 +245,39 @@ class AuthRepository(private val jdbc: JdbcTemplate) {
     fun setPresence(userId: String, connected: Boolean, currentLobbyId: String?, now: Long) {
         jdbc.update(
             """
-            INSERT INTO user_presence (user_id, connected, current_lobby_id, updated_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO user_presence (user_id, connected, current_lobby_id, updated_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
                 connected = excluded.connected,
                 current_lobby_id = excluded.current_lobby_id,
-                updated_at = excluded.updated_at
+                updated_at = excluded.updated_at,
+                last_seen_at = excluded.last_seen_at
             """.trimIndent(),
             userId,
             if (connected) 1 else 0,
             currentLobbyId,
+            now,
+            now,
+        )
+    }
+
+    /**
+     * Refreshes a user's presence without clobbering their current lobby. Used by the
+     * foreground heartbeat so a user counts as online while in the app, even when not
+     * connected to a lobby websocket.
+     */
+    fun touchPresence(userId: String, now: Long) {
+        jdbc.update(
+            """
+            INSERT INTO user_presence (user_id, connected, current_lobby_id, updated_at, last_seen_at)
+            VALUES (?, 1, NULL, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                connected = 1,
+                updated_at = excluded.updated_at,
+                last_seen_at = excluded.last_seen_at
+            """.trimIndent(),
+            userId,
+            now,
             now,
         )
     }
@@ -270,7 +298,7 @@ class AuthRepository(private val jdbc: JdbcTemplate) {
     fun getPresence(userId: String): UserPresenceRecord? =
         jdbc.query(
             """
-            SELECT user_id, connected, current_lobby_id, updated_at
+            SELECT user_id, connected, current_lobby_id, updated_at, last_seen_at
             FROM user_presence
             WHERE user_id = ?
             """.trimIndent(),
@@ -280,6 +308,7 @@ class AuthRepository(private val jdbc: JdbcTemplate) {
                     connected = rs.getInt("connected") == 1,
                     currentLobbyId = rs.getString("current_lobby_id"),
                     updatedAt = rs.getLong("updated_at"),
+                    lastSeenAt = rs.getLong("last_seen_at"),
                 )
             },
             userId,
@@ -298,4 +327,10 @@ class AuthRepository(private val jdbc: JdbcTemplate) {
         val value = getLong(column)
         return if (wasNull()) null else value
     }
+
+    private fun userPresenceHasLastSeenAtColumn(): Boolean =
+        jdbc.query(
+            "PRAGMA table_info(user_presence)",
+            { rs, _ -> rs.getString("name") },
+        ).any { it == "last_seen_at" }
 }

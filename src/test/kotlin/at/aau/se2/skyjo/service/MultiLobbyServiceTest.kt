@@ -62,6 +62,29 @@ class MultiLobbyServiceTest {
     }
 
     @Test
+    fun `new lobby is waiting and accepts join code joins`() {
+        val lobby = service.createLobby(user("user-1", "Alice"))
+
+        val joined = service.joinLobby(user("user-2", "Bob"), lobby.joinCode!!)
+
+        assertEquals(LobbyStatus.WAITING, joined.status)
+        assertEquals(listOf("Alice", "Bob"), joined.players.map { it.nickname })
+    }
+
+    @Test
+    fun `failed one-player start leaves lobby waiting and joinable`() {
+        val lobby = service.createLobby(user("user-1", "Alice"))
+
+        assertThrows<IllegalStateException> {
+            service.startGame(userId = "user-1", lobbyId = lobby.lobbyId!!)
+        }
+        val joined = service.joinLobby(user("user-2", "Bob"), lobby.joinCode!!)
+
+        assertEquals(LobbyStatus.WAITING, joined.status)
+        assertEquals(listOf("Alice", "Bob"), joined.players.map { it.nickname })
+    }
+
+    @Test
     fun `user cannot join two waiting lobbies`() {
         service.createLobby(user("user-1", "Alice"))
         service.createLobby(user("user-2", "Bob"))
@@ -148,6 +171,44 @@ class MultiLobbyServiceTest {
         }
 
         assertTrue(error.message.orEmpty().contains("not waiting"))
+    }
+
+    @Test
+    fun `joinLobby rejects lobbies after game start`() {
+        val lobby = service.createLobby(user("user-1", "Alice"))
+        service.joinLobby(user("user-2", "Bob"), lobby.joinCode!!)
+        service.startGame(userId = "user-1", lobbyId = lobby.lobbyId!!)
+
+        val error = assertThrows<IllegalStateException> {
+            service.joinLobby(user("user-3", "Cara"), lobby.joinCode!!)
+        }
+
+        assertTrue(error.message.orEmpty().contains("in progress"))
+    }
+
+    @Test
+    fun `joinLobby lets existing members rejoin an in game lobby by code`() {
+        val lobby = service.createLobby(user("user-1", "Alice"))
+        service.joinLobby(user("user-2", "Bob"), lobby.joinCode!!)
+        service.startGame(userId = "user-1", lobbyId = lobby.lobbyId!!)
+
+        val rejoined = service.joinLobby(user("user-2", "Bob"), lobby.joinCode!!)
+
+        assertEquals(LobbyStatus.IN_GAME, rejoined.status)
+        assertEquals(lobby.lobbyId, rejoined.lobbyId)
+        assertEquals(listOf("Alice", "Bob"), rejoined.players.map { it.nickname })
+    }
+
+    @Test
+    fun `joinLobby rejects closed lobbies`() {
+        val lobby = service.createLobby(user("user-1", "Alice"))
+        service.closeLobby(lobby.lobbyId!!)
+
+        val error = assertThrows<IllegalStateException> {
+            service.joinLobby(user("user-2", "Bob"), lobby.joinCode!!)
+        }
+
+        assertTrue(error.message.orEmpty().contains("closed"))
     }
 
     @Test

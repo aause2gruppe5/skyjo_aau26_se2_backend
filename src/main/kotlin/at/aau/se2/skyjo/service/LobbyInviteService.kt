@@ -1,7 +1,6 @@
 package at.aau.se2.skyjo.service
 
 import at.aau.se2.skyjo.model.auth.AuthUserDto
-import at.aau.se2.skyjo.model.lobby.LobbyStatus
 import at.aau.se2.skyjo.model.social.LobbyInviteDto
 import at.aau.se2.skyjo.model.social.LobbyInviteStatus
 import at.aau.se2.skyjo.model.social.RelationshipStatus
@@ -54,15 +53,14 @@ class LobbyInviteService @Autowired constructor(
             error("only friends can be invited")
         }
         val lobby = lobbyService.getLobbyById(lobbyId) ?: error("lobby not found")
-        if (lobby.status != LobbyStatus.WAITING) {
-            error("cannot invite to a lobby that is not waiting")
-        }
+        lobby.requireOpenForNewPlayers("invite")
         if (lobby.players.none { it.userId == from.userId }) {
             error("only a lobby member can invite")
         }
         if (lobby.players.any { it.userId == toUserId }) {
             error("user is already in the lobby")
         }
+        lobby.requireAvailableSlot("invite")
         if (repository.findPendingInvite(lobbyId, toUserId) != null) {
             error("lobby invite already exists")
         }
@@ -84,9 +82,7 @@ class LobbyInviteService @Autowired constructor(
     fun acceptInvite(user: AuthUserDto, inviteId: String): LobbyInviteDto {
         val invite = requirePendingInviteForUser(user, inviteId)
         val lobby = lobbyService.getLobbyById(invite.lobbyId) ?: error("lobby not found")
-        if (lobby.status != LobbyStatus.WAITING) {
-            error("cannot accept invite for a lobby that is not waiting")
-        }
+        lobby.requireOpenForNewPlayers("accept invite")
 
         lobbyService.joinLobby(user, invite.joinCode)
         return repository.updateInviteStatus(inviteId, LobbyInviteStatus.ACCEPTED, nowProvider())?.toDto(user.userId)

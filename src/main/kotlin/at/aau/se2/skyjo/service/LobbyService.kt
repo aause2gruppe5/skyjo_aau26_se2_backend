@@ -48,15 +48,11 @@ class LobbyService(
     private val inMemoryUserLobbyIds = mutableMapOf<String, String>()
 
     fun join(sessionId: String, nickname: String): LobbyState = lock.withLock {
-        if (state.status == LobbyStatus.IN_GAME) {
-            error("cannot join: game already in progress")
-        }
-        if (state.players.size >= state.maxPlayers) {
-            error("cannot join: lobby is full (max ${state.maxPlayers} players)")
-        }
+        state.requireOpenForNewPlayers("join")
         if (state.players.any { it.sessionId == sessionId }) {
             return state
         }
+        state.requireAvailableSlot("join")
 
         val isHost = state.players.isEmpty()
         val player = LobbyPlayer(sessionId = sessionId, nickname = nickname, isHost = isHost)
@@ -133,9 +129,6 @@ class LobbyService(
 
     fun joinLobby(user: AuthUserDto, joinCode: String): LobbyState = lock.withLock {
         val lobby = getLobbyByJoinCode(joinCode) ?: error("lobby not found")
-        if (lobby.status != LobbyStatus.WAITING) {
-            error("cannot join: lobby is not waiting")
-        }
         val existingLobby = getCurrentLobbyForUser(user.userId)
         if (existingLobby != null && existingLobby.lobbyId != lobby.lobbyId) {
             error("user is already in a lobby")
@@ -143,9 +136,8 @@ class LobbyService(
         if (lobby.players.any { it.userId == user.userId }) {
             return lobby
         }
-        if (lobby.players.size >= lobby.maxPlayers) {
-            error("cannot join: lobby is full (max ${lobby.maxPlayers} players)")
-        }
+        lobby.requireOpenForNewPlayers("join")
+        lobby.requireAvailableSlot("join")
 
         val lobbyId = lobby.lobbyId ?: error("lobby id is missing")
         val now = nowProvider()

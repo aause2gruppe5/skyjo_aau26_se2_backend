@@ -8,7 +8,9 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor
 import org.springframework.messaging.simp.SimpMessageSendingOperations
+import org.springframework.messaging.support.MessageBuilder
 import org.springframework.web.socket.messaging.SessionConnectedEvent
 import org.springframework.web.socket.messaging.SessionDisconnectEvent
 import java.security.Principal
@@ -74,6 +76,123 @@ class WebSocketEventListenerTest {
             listener.handleWebSocketConnectListener(event)
 
             verify { authService.markUserConnected(playerId, "lobby-1") }
+        }
+
+        @Test
+        fun `refreshes active websocket presence periodically`() {
+            val event = mockk<SessionConnectedEvent>()
+            every { event.user } returns principal
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+            listener.handleWebSocketConnectListener(event)
+            clearMocks(authService)
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns LobbyState(
+                lobbyId = "lobby-2",
+                joinCode = "XYZ789",
+            )
+
+            listener.refreshActiveWebSocketPresence()
+
+            verify { authService.markUserConnected(playerId, "lobby-2") }
+        }
+
+        @Test
+        fun `does not refresh disconnected websocket sessions`() {
+            val connectEvent = mockk<SessionConnectedEvent>()
+            val disconnectEvent = mockk<SessionDisconnectEvent>()
+            every { connectEvent.user } returns principal
+            every { disconnectEvent.user } returns principal
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+            listener.handleWebSocketConnectListener(connectEvent)
+            listener.handleWebSocketDisconnectListener(disconnectEvent)
+            clearMocks(authService)
+
+            listener.refreshActiveWebSocketPresence()
+
+            verify(exactly = 0) { authService.markUserConnected(any(), any()) }
+        }
+
+        @Test
+        fun `duplicate disconnect for one websocket session does not clear another active session`() {
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+            listener.handleWebSocketConnectListener(connectedEvent("session-1"))
+            listener.handleWebSocketConnectListener(connectedEvent("session-2"))
+            clearMocks(authService)
+
+            listener.handleWebSocketDisconnectListener(disconnectEvent("session-1"))
+            listener.handleWebSocketDisconnectListener(disconnectEvent("session-1"))
+
+            verify(exactly = 0) { authService.markUserDisconnected(playerId) }
+
+            listener.handleWebSocketDisconnectListener(disconnectEvent("session-2"))
+
+            verify(exactly = 1) { authService.markUserDisconnected(playerId) }
+        }
+
+        @Test
+        fun `disconnect for one of multiple websocket sessions does not leave game or lobby`() {
+            val listenerWithGame = WebSocketEventListener(messagingTemplate, lobbyService, gameService, authService)
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+            listenerWithGame.handleWebSocketConnectListener(connectedEvent("session-1"))
+            listenerWithGame.handleWebSocketConnectListener(connectedEvent("session-2"))
+            clearMocks(authService, gameService, lobbyService, messagingTemplate)
+
+            listenerWithGame.handleWebSocketDisconnectListener(disconnectEvent("session-1"))
+
+            verify(exactly = 0) { authService.markUserDisconnected(any()) }
+            verify { gameService wasNot Called }
+            verify { lobbyService wasNot Called }
+            verify { messagingTemplate wasNot Called }
+        }
+
+        @Test
+        fun `disconnecting invite-only socket does not close lobby created after socket connected`() {
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+            listener.handleWebSocketConnectListener(connectedEvent("invite-session"))
+
+            val newlyCreatedLobby = LobbyState(
+                lobbyId = "lobby-1",
+                joinCode = "ABC123",
+                players = listOf(
+                    LobbyPlayer(sessionId = playerId, nickname = "Alice", isHost = true, userId = playerId),
+                ),
+            )
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns newlyCreatedLobby
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+
+            listener.handleWebSocketDisconnectListener(disconnectEvent("invite-session"))
+
+            verify(exactly = 0) { lobbyService.leaveLobby(any(), any()) }
+            verify(exactly = 0) { lobbyService.getLobbyById(any()) }
+        }
+
+        @Test
+        fun `disconnecting lobby socket removes player from lobby associated at connect time`() {
+            val lobby = LobbyState(
+                lobbyId = "lobby-1",
+                joinCode = "ABC123",
+                players = listOf(
+                    LobbyPlayer(sessionId = playerId, nickname = "Alice", isHost = true, userId = playerId),
+                ),
+            )
+            val closedLobby = lobby.copy(players = emptyList(), status = LobbyStatus.CLOSED)
+            every { principal.name } returns playerId
+            every { lobbyService.getCurrentLobbyForUser(playerId) } returns lobby
+            every { lobbyService.getLobbyById("lobby-1") } returns lobby
+            every { lobbyService.isPlayerInLobby(playerId) } returns false
+            every { lobbyService.leaveLobby(playerId, "lobby-1") } returns closedLobby
+            listener.handleWebSocketConnectListener(connectedEvent("lobby-session"))
+
+            listener.handleWebSocketDisconnectListener(disconnectEvent("lobby-session"))
+
+            verify { lobbyService.leaveLobby(playerId, "lobby-1") }
+            verify { messagingTemplate.convertAndSend("/topic/lobbies/ABC123", any<LobbyUpdateMessage>()) }
         }
 
         @Test
@@ -250,4 +369,21 @@ class WebSocketEventListenerTest {
             verify { messagingTemplate.convertAndSend("/topic/lobbies/XYZ789", any<LobbyUpdateMessage>()) }
         }
     }
+
+    private fun connectedEvent(sessionId: String): SessionConnectedEvent =
+        mockk<SessionConnectedEvent> {
+            every { user } returns principal
+            every { message } returns MessageBuilder.createMessage(
+                ByteArray(0),
+                SimpMessageHeaderAccessor.create().apply {
+                    setSessionId(sessionId)
+                }.messageHeaders,
+            )
+        }
+
+    private fun disconnectEvent(sessionId: String): SessionDisconnectEvent =
+        mockk<SessionDisconnectEvent> {
+            every { user } returns principal
+            every { getSessionId() } returns sessionId
+        }
 }
