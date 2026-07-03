@@ -1360,26 +1360,14 @@ class GameServiceTest {
     }
 }
 
-// Helpers to access internal state for test setup
-private fun getInternalGameState(service: GameService): at.aau.se2.skyjo.game.model.GameState {
-    val field = GameService::class.java.getDeclaredField("gameState")
-    field.isAccessible = true
-    @Suppress("UNCHECKED_CAST")
-    return (field.get(service) as at.aau.se2.skyjo.game.model.GameState?)!!
-}
+// Helpers to access internal state for test setup, backed by GameService's
+// test-only seams (the previous reflection into private legacy fields was
+// removed together with the shadow state).
+private fun getInternalGameState(service: GameService): GameState =
+    service.currentGameStateForTest()
 
 private fun setInternalGameState(service: GameService, state: GameState) {
-    val stateField = GameService::class.java.getDeclaredField("gameState")
-    stateField.isAccessible = true
-    stateField.set(service, state)
-
-    val roundField = GameService::class.java.getDeclaredField("roundNumber")
-    roundField.isAccessible = true
-    roundField.set(service, 1)
-
-    val totalScoresField = GameService::class.java.getDeclaredField("totalScores")
-    totalScoresField.isAccessible = true
-    totalScoresField.set(service, state.players.associate { it.id to 0 })
+    service.seedGameForTest(state)
 }
 
 private fun gameStateWithActionCard(
