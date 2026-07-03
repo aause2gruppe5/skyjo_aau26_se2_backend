@@ -56,37 +56,8 @@ class LobbyController(
             }
             logger.info("Stored game session is not active for reconnect: ${message.playerName} (principalId=$playerId, gameId=$storedGameId)")
         }
-
-        runCatching {
-            // Den Namen aus der App holen und Leerzeichen am Rand entfernen
-            val rawName = message.playerName.trim()
-
-            if (rawName.length !in 1..15) {
-                error("Name has to be between 1 and 15 characters.")
-            }
-
-            // Uniqueness: Prüfen, ob der Name in der Lobby schon existiert
-            val currentState = lobbyService.getState()
-            if (currentState.players.any { it.nickname.equals(rawName, ignoreCase = true) }) {
-                error("Nickname '$rawName' is already in use")
-            }
-
-            // Wenn wir hier ankommen, ist der Name gültig und einzigartig!
-            val nickname = rawName
-
-            // Spieler der Lobby hinzufügen
-            val state = lobbyService.join(playerId, nickname)
-            logger.info("$nickname ($playerId) joined lobby")
-
-            // Alle Clients über das Update informieren
-            messagingTemplate.convertAndSend("/topic/lobby", state.toUpdateMessage())
-            // Direkt an beitretenden Spieler senden (Subscription-Race-Condition vermeiden)
-            messagingTemplate.convertAndSendToUser(playerId, "/queue/lobby", state.toUpdateMessage())
-
-        }.onFailure { e ->
-            // Fehler (z.B. Name zu kurz oder vergeben) an den jeweiligen Spieler zurücksenden
-            messagingTemplate.convertAndSendToUser(playerId, "/queue/errors", mapOf("message" to e.message))
-        }
+        // No stored game to rejoin: authenticated lobbies are joined via the REST API
+        // (POST /api/lobbies, /api/lobbies/{joinCode}/join), so nothing else to do here.
     }
 
     @PostMapping("/api/lobbies")
@@ -143,14 +114,6 @@ class LobbyController(
             ResponseEntity.ok(lobby.toSummaryResponse() as Any)
         }.getOrElse(::toRestError)
 
-    @MessageMapping("/lobby.leave")
-    fun leaveLobby(headerAccessor: SimpMessageHeaderAccessor) {
-        val playerId = headerAccessor.user?.name ?: return
-        val state = lobbyService.leave(playerId)
-        logger.info("$playerId left lobby")
-        messagingTemplate.convertAndSend("/topic/lobby", state.toUpdateMessage())
-    }
-
     @MessageMapping("/game.start")
     fun startGame(
         @Payload(required = false) message: StartGameMessage?,
@@ -158,17 +121,15 @@ class LobbyController(
     ) {
         val playerId = headerAccessor.user?.name ?: return
         runCatching {
-            val currentLobby = runCatching { lobbyService.getCurrentLobbyForUser(playerId) }.getOrNull()
-            val lobbyState = currentLobby?.lobbyId
-                ?.let { lobbyId -> lobbyService.startGame(userId = playerId, lobbyId = lobbyId) }
-                ?: lobbyService.startGame(playerId)
+            val currentLobby = lobbyService.getCurrentLobbyForUser(playerId)
+                ?: error("you are not in a lobby")
+            val lobbyId = currentLobby.lobbyId ?: error("lobby id is missing")
+            val lobbyState = lobbyService.startGame(userId = playerId, lobbyId = lobbyId)
             val gameConfig = message?.let { GameConfig(maxRounds = it.maxRounds, targetScore = it.targetScore) }
                 ?: GameConfig()
             logger.info("Game started by host $playerId (maxRounds=${gameConfig.maxRounds}, targetScore=${gameConfig.targetScore})")
             messagingTemplate.convertAndSend(lobbyState.topicPath(), lobbyState.toUpdateMessage())
-            val gameState = lobbyState.lobbyId
-                ?.let { lobbyId -> gameService.startGame(lobbyId, lobbyState.players, gameConfig) }
-                ?: gameService.startGame(lobbyState.players, gameConfig)
+            val gameState = gameService.startGame(lobbyId, lobbyState.players, gameConfig)
             messagingTemplate.convertAndSend(gameState.topicPath(), gameState)
             lobbyState.players.forEach { player ->
                 messagingTemplate.convertAndSendToUser(player.userId, "/queue/gamestate", gameState)

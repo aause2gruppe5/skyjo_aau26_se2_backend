@@ -43,61 +43,8 @@ class LobbyService(
 ) {
 
     private val lock = ReentrantLock()
-    private var state = LobbyState()
     private val inMemoryLobbies = mutableMapOf<String, LobbyState>()
     private val inMemoryUserLobbyIds = mutableMapOf<String, String>()
-
-    fun join(sessionId: String, nickname: String): LobbyState = lock.withLock {
-        state.requireOpenForNewPlayers("join")
-        if (state.players.any { it.sessionId == sessionId }) {
-            return state
-        }
-        state.requireAvailableSlot("join")
-
-        val isHost = state.players.isEmpty()
-        val player = LobbyPlayer(sessionId = sessionId, nickname = nickname, isHost = isHost)
-        state = state.copy(players = state.players + player)
-        state
-    }
-
-    fun leave(sessionId: String): LobbyState = lock.withLock {
-        val players = state.players.filter { it.sessionId != sessionId }
-        val reassigned = if (players.isNotEmpty() && players.none { it.isHost }) {
-            players.mapIndexed { i, p -> if (i == 0) p.copy(isHost = true) else p }
-        } else {
-            players
-        }
-        val newStatus = if (reassigned.isEmpty()) LobbyStatus.WAITING else state.status
-        state = state.copy(players = reassigned, status = newStatus)
-        state
-    }
-
-    fun startGame(sessionId: String): LobbyState = lock.withLock {
-        if (state.status != LobbyStatus.WAITING) {
-            error("cannot start game: lobby is not waiting")
-        }
-        val caller = state.players.find { it.sessionId == sessionId }
-            ?: error("player not in lobby")
-        if (!caller.isHost) {
-            error("only the host can start the game")
-        }
-        if (state.players.size < 2) {
-            error("need at least 2 players to start")
-        }
-        state = state.copy(status = LobbyStatus.IN_GAME)
-        state
-    }
-
-    fun reset(): LobbyState = lock.withLock {
-        state = LobbyState()
-        state
-    }
-
-    fun getState(): LobbyState = lock.withLock { state }
-
-    fun isPlayerInLobby(sessionId: String): Boolean = lock.withLock {
-        state.players.any { it.sessionId == sessionId }
-    }
 
     fun createLobby(user: AuthUserDto): LobbyState = lock.withLock {
         ensureUserCanEnterLobby(user.userId)

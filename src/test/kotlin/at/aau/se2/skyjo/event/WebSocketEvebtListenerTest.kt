@@ -104,7 +104,6 @@ class WebSocketEventListenerTest {
             every { disconnectEvent.user } returns principal
             every { principal.name } returns playerId
             every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
-            every { lobbyService.isPlayerInLobby(playerId) } returns false
             listener.handleWebSocketConnectListener(connectEvent)
             listener.handleWebSocketDisconnectListener(disconnectEvent)
             clearMocks(authService)
@@ -118,7 +117,6 @@ class WebSocketEventListenerTest {
         fun `duplicate disconnect for one websocket session does not clear another active session`() {
             every { principal.name } returns playerId
             every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
-            every { lobbyService.isPlayerInLobby(playerId) } returns false
             listener.handleWebSocketConnectListener(connectedEvent("session-1"))
             listener.handleWebSocketConnectListener(connectedEvent("session-2"))
             clearMocks(authService)
@@ -164,8 +162,6 @@ class WebSocketEventListenerTest {
                 ),
             )
             every { lobbyService.getCurrentLobbyForUser(playerId) } returns newlyCreatedLobby
-            every { lobbyService.isPlayerInLobby(playerId) } returns false
-
             listener.handleWebSocketDisconnectListener(disconnectEvent("invite-session"))
 
             verify(exactly = 0) { lobbyService.leaveLobby(any(), any()) }
@@ -185,7 +181,6 @@ class WebSocketEventListenerTest {
             every { principal.name } returns playerId
             every { lobbyService.getCurrentLobbyForUser(playerId) } returns lobby
             every { lobbyService.getLobbyById("lobby-1") } returns lobby
-            every { lobbyService.isPlayerInLobby(playerId) } returns false
             every { lobbyService.leaveLobby(playerId, "lobby-1") } returns closedLobby
             listener.handleWebSocketConnectListener(connectedEvent("lobby-session"))
 
@@ -226,15 +221,11 @@ class WebSocketEventListenerTest {
             every { event.user } returns principal
             every { principal.name } returns playerId
 
-            // Spieler ist nicht in der Lobby
-            every { lobbyService.isPlayerInLobby(playerId) } returns false
-            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
+            // Spieler ist nicht in der Lobby            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
 
             listener.handleWebSocketDisconnectListener(event)
 
             verify { authService.markUserDisconnected(playerId) }
-            verify { lobbyService.isPlayerInLobby(playerId) }
-            verify(exactly = 0) { lobbyService.leave(any()) }
             verify(exactly = 0) { lobbyService.leaveLobby(any(), any()) }
             verify { messagingTemplate wasNot Called }
         }
@@ -260,7 +251,6 @@ class WebSocketEventListenerTest {
             every { event.user } returns principal
             every { principal.name } returns playerId
             every { gameService.markPlayerDisconnected(playerId) } returns gameState
-            every { lobbyService.isPlayerInLobby(playerId) } returns false
             every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
 
             listenerWithGame.handleWebSocketDisconnectListener(event)
@@ -270,45 +260,12 @@ class WebSocketEventListenerTest {
             verify { messagingTemplate.convertAndSend("/topic/games/game-1", gameState) }
         }
 
-        @Test
-        fun `entfernt Spieler und sendet Update, wenn Spieler in der Lobby ist`() {
-            val event = mockk<SessionDisconnectEvent>()
-            every { event.user } returns principal
-            every { principal.name } returns playerId
-
-            // Spieler IST in der Lobby
-            every { lobbyService.isPlayerInLobby(playerId) } returns true
-
-            // Mock für den aktualisierten State nach dem Verlassen
-            val updatedState = mockk<LobbyState> {
-                every { lobbyId } returns null
-                every { joinCode } returns null
-                every { players } returns emptyList()
-                every { status } returns mockk() // Nimmt dein LobbyStatus Enum
-                every { maxPlayers } returns 4
-            }
-            every { lobbyService.leave(playerId) } returns updatedState
-            every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
-
-            listener.handleWebSocketDisconnectListener(event)
-
-            verify { lobbyService.isPlayerInLobby(playerId) }
-            verify { lobbyService.leave(playerId) }
-            verify {
-                messagingTemplate.convertAndSend(
-                    "/topic/lobby",
-                    any<LobbyUpdateMessage>()
-                )
-            }
-        }
 
         @Test
         fun `authenticated user is removed from authenticated lobby on disconnect`() {
             val event = mockk<SessionDisconnectEvent>()
             every { event.user } returns principal
             every { principal.name } returns playerId
-            every { lobbyService.isPlayerInLobby(playerId) } returns false
-
             val authenticatedLobby = LobbyState(
                 lobbyId = "lobby-1",
                 joinCode = "ABC123",
@@ -333,7 +290,6 @@ class WebSocketEventListenerTest {
             val event = mockk<SessionDisconnectEvent>()
             every { event.user } returns principal
             every { principal.name } returns playerId
-            every { lobbyService.isPlayerInLobby(playerId) } returns false
             every { lobbyService.getCurrentLobbyForUser(playerId) } returns null
 
             listener.handleWebSocketDisconnectListener(event)
@@ -346,8 +302,6 @@ class WebSocketEventListenerTest {
             val event = mockk<SessionDisconnectEvent>()
             every { event.user } returns principal
             every { principal.name } returns playerId
-            every { lobbyService.isPlayerInLobby(playerId) } returns false
-
             val authenticatedLobby = LobbyState(
                 lobbyId = "lobby-1",
                 joinCode = "XYZ789",
