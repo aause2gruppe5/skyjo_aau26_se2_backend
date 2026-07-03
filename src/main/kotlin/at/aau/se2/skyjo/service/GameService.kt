@@ -70,7 +70,6 @@ class GameService @Autowired constructor(
         var playerCheatedThisTurn: Boolean = false,
         var cheatReportedThisTurn: Boolean = false,
         val reportersThisTurn: MutableSet<String> = mutableSetOf(),
-        val sessionAliases: MutableMap<String, String> = mutableMapOf(),
         val disconnectedNicknames: MutableSet<String> = mutableSetOf(),
     )
 
@@ -111,23 +110,10 @@ class GameService @Autowired constructor(
 
     fun markPlayerDisconnected(principalId: String): GameUpdateMessage? = lock.withLock {
         val game = findManagedGameForPlayer(principalId) ?: return@withLock null
-        val playerId = game.sessionAliases[principalId] ?: principalId
-        val nickname = game.playerInfo[playerId] ?: return@withLock null
+        val nickname = game.playerInfo[principalId] ?: return@withLock null
         game.disconnectedNicknames.add(nickname)
-        gameRepository?.markDisconnected(playerId)
+        gameRepository?.markDisconnected(principalId)
         toUpdateMessage(game, game.gameState, gameOver = game.completed)
-    }
-
-    fun addSessionAlias(newSessionId: String, nickname: String): Boolean = lock.withLock {
-        val game = games.values.firstOrNull { managed ->
-            !managed.completed && managed.playerInfo.values.any { it == nickname }
-        } ?: return@withLock false
-        val oldPlayerId = game.playerInfo.entries.first { it.value == nickname }.key
-
-        game.sessionAliases[newSessionId] = oldPlayerId
-        playerGameIndex[newSessionId] = game.gameId
-        game.disconnectedNicknames.remove(nickname)
-        true
     }
 
     fun reconnectPlayer(principalId: String, nickname: String, gameId: String): GameUpdateMessage? = lock.withLock {
@@ -139,9 +125,6 @@ class GameService @Autowired constructor(
             else -> game.playerInfo.entries.firstOrNull { it.value == nickname }?.key
         } ?: return@withLock null
 
-        if (principalId != playerId) {
-            game.sessionAliases[principalId] = playerId
-        }
         playerGameIndex[principalId] = game.gameId
         playerGameIndex[playerId] = game.gameId
         game.disconnectedNicknames.remove(game.playerInfo[playerId])
@@ -161,7 +144,7 @@ class GameService @Autowired constructor(
     fun processAction(playerId: String, action: GameActionMessage): GameUpdateMessage = lock.withLock {
         val game = findManagedGameForPlayer(playerId) ?: error("game has not started yet")
         val state = game.gameState
-        val resolvedPlayerId = game.sessionAliases[playerId] ?: playerId
+        val resolvedPlayerId = playerId
 
         // Nächste Runde durch Host starten
         if (action.type == ActionType.START_NEXT_ROUND) {
@@ -263,7 +246,7 @@ class GameService @Autowired constructor(
     fun playActionCard(playerId: String, command: PlayActionCardCommand): PlayActionCardMessageResult = lock.withLock {
         val game = findManagedGameForPlayer(playerId) ?: error("game has not started yet")
         val state = game.gameState
-        val resolvedPlayerId = game.sessionAliases[playerId] ?: playerId
+        val resolvedPlayerId = playerId
 
         if (state.currentPlayerId != resolvedPlayerId) {
             error("not your turn (current player: ${state.currentPlayerId})")
@@ -300,7 +283,7 @@ class GameService @Autowired constructor(
             error("game is already completed")
         }
 
-        val resolvedPlayerId = game.sessionAliases[playerId] ?: playerId
+        val resolvedPlayerId = playerId
         ensureCheatReportTurn(game)
         val state = game.gameState
         if (state.currentPlayerId != resolvedPlayerId) {
@@ -331,7 +314,7 @@ class GameService @Autowired constructor(
             error("game is already completed")
         }
 
-        val reporterPlayerId = game.sessionAliases[playerId] ?: playerId
+        val reporterPlayerId = playerId
         if (game.gameState.phase == GamePhase.NOT_STARTED || game.gameState.phase == GamePhase.ROUND_FINISHED) {
             error("cannot report right now")
         }
@@ -452,10 +435,6 @@ class GameService @Autowired constructor(
         )
 
         players.forEach { player ->
-            if (player.sessionId != player.userId) {
-                managedGame.sessionAliases[player.sessionId] = player.userId
-                playerGameIndex[player.sessionId] = managedGame.gameId
-            }
             playerGameIndex[player.userId] = managedGame.gameId
             gameRepository?.savePlayerSession(player.userId, managedGame.gameId, connected = true)
         }
@@ -503,7 +482,7 @@ class GameService @Autowired constructor(
         }
 
         val matched = games.values.firstOrNull { game ->
-            !game.completed && (principalId in game.playerInfo || principalId in game.sessionAliases)
+            !game.completed && principalId in game.playerInfo
         }
         if (matched != null) {
             playerGameIndex[principalId] = matched.gameId
@@ -564,7 +543,7 @@ class GameService @Autowired constructor(
     }
 
     private fun removePlayerIndexes(game: ManagedGame) {
-        (game.playerInfo.keys + game.sessionAliases.keys).forEach { playerGameIndex.remove(it) }
+        game.playerInfo.keys.forEach { playerGameIndex.remove(it) }
     }
 
     private fun toUpdateMessage(game: ManagedGame, state: GameState, gameOver: Boolean): GameUpdateMessage {
