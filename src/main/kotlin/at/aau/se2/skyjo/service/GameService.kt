@@ -79,21 +79,9 @@ class GameService @Autowired constructor(
     private val playerGameIndex = mutableMapOf<String, String>()
     private val recordedStatsGameIds = mutableSetOf<String>()
 
+    // Pointer to the most recently started game, used by the no-argument
+    // convenience methods. The games map above is the single source of truth.
     private var currentGameId: String? = null
-    private var gameState: GameState? = null
-    private var config: GameConfig = GameConfig()
-    private var roundNumber: Int = 0
-    private var totalScores: Map<String, Int> = emptyMap()
-    private var playerInfo: Map<String, String> = emptyMap()
-    private val cheatPeekCounts: MutableMap<String, Int> = mutableMapOf()
-    private val reportCounts: MutableMap<String, Int> = mutableMapOf()
-    private var turnId: Int = 0
-    private var reportTurnPlayerId: String? = null
-    private var playerCheatedThisTurn: Boolean = false
-    private var cheatReportedThisTurn: Boolean = false
-    private val reportersThisTurn: MutableSet<String> = mutableSetOf()
-    private val sessionAliases: MutableMap<String, String> = mutableMapOf()
-    private val disconnectedNicknames: MutableSet<String> = mutableSetOf()
 
     constructor(engine: SkyjoEngine, gameRepository: GameRepository?) : this(engine, gameRepository, null, null)
 
@@ -112,7 +100,7 @@ class GameService @Autowired constructor(
             games[managedGame.gameId] = managedGame
             playerIds.forEach { playerGameIndex[it] = managedGame.gameId }
             if (currentGameId == null) {
-                syncLegacyFrom(managedGame)
+                currentGameId = managedGame.gameId
             }
         }
     }
@@ -123,12 +111,10 @@ class GameService @Autowired constructor(
 
     fun markPlayerDisconnected(principalId: String): GameUpdateMessage? = lock.withLock {
         val game = findManagedGameForPlayer(principalId) ?: return@withLock null
-        syncManagedFromLegacyIfCurrent(game)
         val playerId = game.sessionAliases[principalId] ?: principalId
         val nickname = game.playerInfo[playerId] ?: return@withLock null
         game.disconnectedNicknames.add(nickname)
         gameRepository?.markDisconnected(playerId)
-        syncLegacyIfCurrent(game)
         toUpdateMessage(game, game.gameState, gameOver = game.completed)
     }
 
@@ -141,15 +127,12 @@ class GameService @Autowired constructor(
         game.sessionAliases[newSessionId] = oldPlayerId
         playerGameIndex[newSessionId] = game.gameId
         game.disconnectedNicknames.remove(nickname)
-        syncLegacyIfCurrent(game)
         true
     }
 
     fun reconnectPlayer(principalId: String, nickname: String, gameId: String): GameUpdateMessage? = lock.withLock {
         val game = games[gameId]?.takeUnless { it.completed }
-            ?: ensureLegacyManagedGame()?.takeIf { it.gameId == gameId && !it.completed }
             ?: return@withLock null
-        syncManagedFromLegacyIfCurrent(game)
 
         val playerId = when {
             principalId in game.playerInfo -> principalId
@@ -163,7 +146,6 @@ class GameService @Autowired constructor(
         playerGameIndex[playerId] = game.gameId
         game.disconnectedNicknames.remove(game.playerInfo[playerId])
         gameRepository?.savePlayerSession(playerId, game.gameId, connected = true)
-        syncLegacyIfCurrent(game)
         toUpdateMessage(game, game.gameState, gameOver = game.completed)
     }
 
@@ -178,7 +160,6 @@ class GameService @Autowired constructor(
 
     fun processAction(playerId: String, action: GameActionMessage): GameUpdateMessage = lock.withLock {
         val game = findManagedGameForPlayer(playerId) ?: error("game has not started yet")
-        syncManagedFromLegacyIfCurrent(game)
         val state = game.gameState
         val resolvedPlayerId = game.sessionAliases[playerId] ?: playerId
 
@@ -203,7 +184,6 @@ class GameService @Autowired constructor(
             game.gameState = newRoundState
             resetCheatReportRound(game, newRoundState.currentPlayerId)
             gameRepository?.saveGame(game.gameId, game.lobbyId, newRoundState)
-            syncLegacyIfCurrent(game)
 
             // Frühzeitig zurückkehren, restliche Zug-Logik überspringen
             return@withLock toUpdateMessage(game, newRoundState, gameOver = false)
@@ -272,7 +252,6 @@ class GameService @Autowired constructor(
             advanceCheatReportTurn(game, updatedState.currentPlayerId)
         }
         gameRepository?.saveGame(game.gameId, game.lobbyId, updatedState)
-        syncLegacyIfCurrent(game)
 
         if (updatedState.phase == GamePhase.ROUND_FINISHED) {
             return@withLock handleRoundFinished(game, updatedState)
@@ -283,7 +262,6 @@ class GameService @Autowired constructor(
 
     fun playActionCard(playerId: String, command: PlayActionCardCommand): PlayActionCardMessageResult = lock.withLock {
         val game = findManagedGameForPlayer(playerId) ?: error("game has not started yet")
-        syncManagedFromLegacyIfCurrent(game)
         val state = game.gameState
         val resolvedPlayerId = game.sessionAliases[playerId] ?: playerId
 
@@ -303,7 +281,6 @@ class GameService @Autowired constructor(
             advanceCheatReportTurn(game, updatedState.currentPlayerId)
         }
         gameRepository?.saveGame(game.gameId, game.lobbyId, updatedState)
-        syncLegacyIfCurrent(game)
 
         val update = if (updatedState.phase == GamePhase.ROUND_FINISHED) {
             handleRoundFinished(game, updatedState)
@@ -319,7 +296,6 @@ class GameService @Autowired constructor(
 
     fun cheatPeekDrawPile(playerId: String): CheatPeekResultMessage = lock.withLock {
         val game = findManagedGameForPlayer(playerId) ?: error("game has not started yet")
-        syncManagedFromLegacyIfCurrent(game)
         if (game.completed) {
             error("game is already completed")
         }
@@ -342,7 +318,6 @@ class GameService @Autowired constructor(
         game.playerCheatedThisTurn = true
         game.gameState = peekResult.state
         gameRepository?.saveGame(game.gameId, game.lobbyId, peekResult.state)
-        syncLegacyIfCurrent(game)
 
         CheatPeekResultMessage(
             card = toCardDto(peekResult.card),
@@ -352,7 +327,6 @@ class GameService @Autowired constructor(
 
     fun cheatReportCurrentPlayer(playerId: String): CheatReportMessageResult = lock.withLock {
         val game = findManagedGameForPlayer(playerId) ?: error("game has not started yet")
-        syncManagedFromLegacyIfCurrent(game)
         if (game.completed) {
             error("game is already completed")
         }
@@ -391,7 +365,6 @@ class GameService @Autowired constructor(
             penaltyPoints = FALSE_CHEAT_REPORT_PENALTY
         }
         addScorePenalty(game, penaltyPlayerId, penaltyPoints)
-        syncLegacyIfCurrent(game)
 
         val privateResult = CheatReportResultMessage(
             successful = successful,
@@ -410,23 +383,53 @@ class GameService @Autowired constructor(
 
     fun getCurrentState(): GameUpdateMessage? = lock.withLock {
         currentManagedGame()?.let { game ->
-            syncManagedFromLegacyIfCurrent(game)
             toUpdateMessage(game, game.gameState, gameOver = game.completed)
         }
-            ?: gameState?.let { toUpdateMessageFromLegacy(it, gameOver = false) }
     }
 
     fun getCurrentState(playerId: String): GameUpdateMessage? = lock.withLock {
         findManagedGameForPlayer(playerId)?.let { game ->
-            syncManagedFromLegacyIfCurrent(game)
             toUpdateMessage(game, game.gameState, gameOver = game.completed)
         }
     }
 
     internal fun handleRoundFinished(finishedState: GameState): GameUpdateMessage {
         val game = currentManagedGame() ?: error("game has not started yet")
-        syncManagedFromLegacyIfCurrent(game)
         return handleRoundFinished(game, finishedState)
+    }
+
+    /**
+     * Test-only seam: installs [state] as the current game's state, creating a
+     * managed game when none exists yet. Mirrors how tests previously seeded the
+     * (now removed) legacy fields via reflection. Not used by production code.
+     */
+    internal fun seedGameForTest(state: GameState) = lock.withLock {
+        val existing = currentManagedGame()
+        if (existing != null) {
+            existing.gameState = state
+            existing.roundNumber = 1
+            existing.totalScores = state.players.associate { it.id to 0 }
+        } else {
+            val gameId = UUID.randomUUID().toString()
+            val playerIds = state.players.map { it.id }
+            val managedGame = ManagedGame(
+                gameId = gameId,
+                lobbyId = null,
+                gameState = state,
+                config = GameConfig(),
+                roundNumber = 1,
+                totalScores = playerIds.associateWith { 0 },
+                playerInfo = playerIds.associateWith { it },
+            )
+            games[gameId] = managedGame
+            playerIds.forEach { playerGameIndex[it] = gameId }
+            currentGameId = gameId
+        }
+    }
+
+    /** Test-only seam: returns the current game's raw state. Not used by production code. */
+    internal fun currentGameStateForTest(): GameState = lock.withLock {
+        (currentManagedGame() ?: error("no current game")).gameState
     }
 
     private fun startGameInternal(
@@ -458,8 +461,8 @@ class GameService @Autowired constructor(
         }
 
         games[managedGame.gameId] = managedGame
+        currentGameId = managedGame.gameId
         gameRepository?.saveGame(managedGame.gameId, managedGame.lobbyId, newState)
-        syncLegacyFrom(managedGame)
         return toUpdateMessage(managedGame, newState, gameOver = false)
     }
 
@@ -484,17 +487,15 @@ class GameService @Autowired constructor(
             game.lobbyId?.let { lobbyService?.closeLobby(it) }
             removePlayerIndexes(game)
             recordFinalStatsOnce(game)
-            syncLegacyIfCurrent(game)
             return toUpdateMessage(game, finishedState, gameOver = true)
         }
         //"Handbremse" zum anzeigen der Rundenergebnisse
         gameRepository?.saveGame(game.gameId, game.lobbyId, finishedState)
-        syncLegacyIfCurrent(game)
         return toUpdateMessage(game, finishedState, gameOver = false)
     }
 
     private fun currentManagedGame(): ManagedGame? =
-        currentGameId?.let(games::get) ?: ensureLegacyManagedGame()
+        currentGameId?.let(games::get)
 
     private fun findManagedGameForPlayer(principalId: String): ManagedGame? {
         playerGameIndex[principalId]?.let { gameId ->
@@ -509,98 +510,7 @@ class GameService @Autowired constructor(
             return matched
         }
 
-        val legacyGame = ensureLegacyManagedGame()?.takeUnless { it.completed } ?: return null
-        val resolvedPlayerId = legacyGame.sessionAliases[principalId] ?: principalId
-        return if (resolvedPlayerId in legacyGame.playerInfo) {
-            playerGameIndex[principalId] = legacyGame.gameId
-            legacyGame
-        } else {
-            null
-        }
-    }
-
-    private fun ensureLegacyManagedGame(): ManagedGame? {
-        val state = gameState ?: return null
-        val legacyGameId = currentGameId ?: "legacy-game"
-        currentGameId = legacyGameId
-        val playerIds = state.players.map { it.id }
-        val managedGame = games.getOrPut(legacyGameId) {
-            ManagedGame(
-                gameId = legacyGameId,
-                lobbyId = null,
-                gameState = state,
-                config = config,
-                roundNumber = roundNumber.takeIf { it > 0 } ?: 1,
-                totalScores = totalScores.ifEmpty { playerIds.associateWith { 0 } },
-                playerInfo = playerInfo.ifEmpty { playerIds.associateWith { it } },
-                cheatPeekCounts = cheatPeekCounts.toMutableMap(),
-                reportCounts = reportCounts.toMutableMap(),
-                turnId = turnId,
-                reportTurnPlayerId = reportTurnPlayerId,
-                playerCheatedThisTurn = playerCheatedThisTurn,
-                cheatReportedThisTurn = cheatReportedThisTurn,
-                reportersThisTurn = reportersThisTurn.toMutableSet(),
-                sessionAliases = sessionAliases.toMutableMap(),
-                disconnectedNicknames = disconnectedNicknames.toMutableSet(),
-            )
-        }
-        playerIds.forEach { playerGameIndex.putIfAbsent(it, managedGame.gameId) }
-        syncManagedFromLegacyIfCurrent(managedGame)
-        return managedGame
-    }
-
-    private fun syncLegacyFrom(game: ManagedGame) {
-        currentGameId = game.gameId
-        gameState = game.gameState
-        config = game.config
-        roundNumber = game.roundNumber
-        totalScores = game.totalScores
-        playerInfo = game.playerInfo
-        cheatPeekCounts.clear()
-        cheatPeekCounts.putAll(game.cheatPeekCounts)
-        reportCounts.clear()
-        reportCounts.putAll(game.reportCounts)
-        turnId = game.turnId
-        reportTurnPlayerId = game.reportTurnPlayerId
-        playerCheatedThisTurn = game.playerCheatedThisTurn
-        cheatReportedThisTurn = game.cheatReportedThisTurn
-        reportersThisTurn.clear()
-        reportersThisTurn.addAll(game.reportersThisTurn)
-        sessionAliases.clear()
-        sessionAliases.putAll(game.sessionAliases)
-        disconnectedNicknames.clear()
-        disconnectedNicknames.addAll(game.disconnectedNicknames)
-    }
-
-    private fun syncManagedFromLegacyIfCurrent(game: ManagedGame) {
-        if (game.gameId != currentGameId) {
-            return
-        }
-        game.gameState = gameState ?: game.gameState
-        game.config = config
-        game.roundNumber = roundNumber
-        game.totalScores = totalScores.ifEmpty { game.totalScores }
-        game.playerInfo = playerInfo.ifEmpty { game.playerInfo }
-        game.cheatPeekCounts.clear()
-        game.cheatPeekCounts.putAll(cheatPeekCounts)
-        game.reportCounts.clear()
-        game.reportCounts.putAll(reportCounts)
-        game.turnId = turnId
-        game.reportTurnPlayerId = reportTurnPlayerId
-        game.playerCheatedThisTurn = playerCheatedThisTurn
-        game.cheatReportedThisTurn = cheatReportedThisTurn
-        game.reportersThisTurn.clear()
-        game.reportersThisTurn.addAll(reportersThisTurn)
-        game.sessionAliases.clear()
-        game.sessionAliases.putAll(sessionAliases)
-        game.disconnectedNicknames.clear()
-        game.disconnectedNicknames.addAll(disconnectedNicknames)
-    }
-
-    private fun syncLegacyIfCurrent(game: ManagedGame) {
-        if (game.gameId == currentGameId) {
-            syncLegacyFrom(game)
-        }
+        return null
     }
 
     private fun resetCheatReportRound(game: ManagedGame, currentPlayerId: String?) {
@@ -710,28 +620,6 @@ class GameService @Autowired constructor(
             disconnectedPlayers = game.disconnectedNicknames.toList(),
             turnId = game.turnId,
         )
-    }
-
-    private fun toUpdateMessageFromLegacy(state: GameState, gameOver: Boolean): GameUpdateMessage {
-        val legacyGame = ManagedGame(
-            gameId = currentGameId ?: "legacy-game",
-            lobbyId = null,
-            gameState = state,
-            config = config,
-            roundNumber = roundNumber,
-            totalScores = totalScores,
-            playerInfo = playerInfo,
-            cheatPeekCounts = cheatPeekCounts.toMutableMap(),
-            reportCounts = reportCounts.toMutableMap(),
-            turnId = turnId,
-            reportTurnPlayerId = reportTurnPlayerId,
-            playerCheatedThisTurn = playerCheatedThisTurn,
-            cheatReportedThisTurn = cheatReportedThisTurn,
-            reportersThisTurn = reportersThisTurn.toMutableSet(),
-            sessionAliases = sessionAliases.toMutableMap(),
-            disconnectedNicknames = disconnectedNicknames.toMutableSet(),
-        )
-        return toUpdateMessage(legacyGame, state, gameOver)
     }
 
     private fun toCardDto(card: SkyjoCard): CardDto =

@@ -138,22 +138,9 @@ class GameServiceDrawThreeCardsTest {
         SkyjoCard.NumberCard(id = id, value = value)
 }
 
-private fun getInternalGameStateForDrawThree(service: GameService): GameState {
-    val field = GameService::class.java.getDeclaredField("gameState")
-    field.isAccessible = true
-    return (field.get(service) as GameState?)!!
-}
+private fun getInternalGameStateForDrawThree(service: GameService): GameState =
+    service.currentGameStateForTest()
 
 private fun setInternalGameStateForDrawThree(service: GameService, state: GameState) {
-    val stateField = GameService::class.java.getDeclaredField("gameState")
-    stateField.isAccessible = true
-    stateField.set(service, state)
-
-    val roundField = GameService::class.java.getDeclaredField("roundNumber")
-    roundField.isAccessible = true
-    roundField.set(service, 1)
-
-    val totalScoresField = GameService::class.java.getDeclaredField("totalScores")
-    totalScoresField.isAccessible = true
-    totalScoresField.set(service, state.players.associate { it.id to 0 })
+    service.seedGameForTest(state)
 }
