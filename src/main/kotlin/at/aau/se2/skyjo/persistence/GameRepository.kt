@@ -3,6 +3,7 @@ package at.aau.se2.skyjo.persistence
 import at.aau.se2.skyjo.game.model.BoardPosition
 import at.aau.se2.skyjo.game.model.GamePhase
 import at.aau.se2.skyjo.game.model.GameState
+import at.aau.se2.skyjo.model.GameConfig
 import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.databind.DeserializationContext
 import com.fasterxml.jackson.databind.DeserializationFeature
@@ -17,10 +18,18 @@ import jakarta.annotation.PostConstruct
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 
+data class GameMeta(
+    val roundNumber: Int,
+    val totalScores: Map<String, Int>,
+    val config: GameConfig,
+    val playerInfo: Map<String, String>,
+)
+
 data class PersistedGame(
     val gameId: String,
     val lobbyId: String?,
     val state: GameState,
+    val meta: GameMeta? = null,
 )
 
 @Repository
@@ -55,12 +64,16 @@ class GameRepository(private val jdbc: JdbcTemplate) {
 
     @PostConstruct
     fun initSchema() {
+        // WAL improves durability and read/write concurrency for SQLite; it is a
+        // persistent database-level setting so running it once at startup is enough.
+        runCatching { jdbc.execute("PRAGMA journal_mode=WAL") }
         jdbc.execute(
             """
             CREATE TABLE IF NOT EXISTS games (
                 game_id TEXT PRIMARY KEY,
                 lobby_id TEXT,
                 state_json TEXT NOT NULL,
+                meta_json TEXT,
                 phase TEXT NOT NULL,
                 completed INTEGER NOT NULL DEFAULT 0,
                 updated_at INTEGER NOT NULL
@@ -69,6 +82,7 @@ class GameRepository(private val jdbc: JdbcTemplate) {
         )
         runCatching { jdbc.execute("ALTER TABLE games ADD COLUMN lobby_id TEXT") }
         runCatching { jdbc.execute("ALTER TABLE games ADD COLUMN completed INTEGER NOT NULL DEFAULT 0") }
+        runCatching { jdbc.execute("ALTER TABLE games ADD COLUMN meta_json TEXT") }
         jdbc.execute(
             """
             CREATE TABLE IF NOT EXISTS player_sessions (
@@ -85,20 +99,22 @@ class GameRepository(private val jdbc: JdbcTemplate) {
         saveGame(gameId, lobbyId = null, state = state, completed = completed)
     }
 
-    fun saveGame(gameId: String, lobbyId: String?, state: GameState, completed: Boolean = false) {
+    fun saveGame(gameId: String, lobbyId: String?, state: GameState, completed: Boolean = false, meta: GameMeta? = null) {
         val json = mapper.writeValueAsString(state)
+        val metaJson = meta?.let { mapper.writeValueAsString(it) }
         jdbc.update(
             """
-            INSERT INTO games (game_id, lobby_id, state_json, phase, completed, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO games (game_id, lobby_id, state_json, meta_json, phase, completed, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(game_id) DO UPDATE SET
                 lobby_id = excluded.lobby_id,
                 state_json = excluded.state_json,
+                meta_json = excluded.meta_json,
                 phase = excluded.phase,
                 completed = excluded.completed,
                 updated_at = excluded.updated_at
             """.trimIndent(),
-            gameId, lobbyId, json, state.phase.name, if (completed) 1 else 0, System.currentTimeMillis()
+            gameId, lobbyId, json, metaJson, state.phase.name, if (completed) 1 else 0, System.currentTimeMillis()
         )
     }
 
@@ -108,12 +124,13 @@ class GameRepository(private val jdbc: JdbcTemplate) {
     fun loadActiveGames(): List<PersistedGame> {
         return try {
             jdbc.query(
-                "SELECT game_id, lobby_id, state_json FROM games WHERE completed = 0 AND phase != ? ORDER BY updated_at ASC",
+                "SELECT game_id, lobby_id, state_json, meta_json FROM games WHERE completed = 0 AND phase != ? ORDER BY updated_at ASC",
                 { rs, _ ->
                     PersistedGame(
                         gameId = rs.getString("game_id"),
                         lobbyId = rs.getString("lobby_id"),
                         state = mapper.readValue(rs.getString("state_json"), GameState::class.java),
+                        meta = rs.getString("meta_json")?.let { mapper.readValue(it, GameMeta::class.java) },
                     )
                 },
                 GamePhase.NOT_STARTED.name // WICHTIG: Hier darf nur noch DIESER EINE Parameter stehen!

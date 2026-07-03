@@ -1271,6 +1271,31 @@ class GameServiceTest {
     }
 
     @Test
+    fun `round number and scores are restored after a restart`() {
+        val dataSource = SingleConnectionDataSource("jdbc:sqlite::memory:", true)
+        val jdbc = JdbcTemplate(dataSource)
+        val repository = GameRepository(jdbc)
+        repository.initSchema()
+        service = GameService(engine, repository)
+        service.startGame(players, GameConfig(maxRounds = 5, targetScore = 1000))
+
+        // Finish round 1 (accumulates scores) without ending the game, then start round 2.
+        val roundOne = getInternalGameState(service)
+        val finished = engine.finishRound(roundOne.copy(finisherPlayerId = roundOne.currentPlayerId!!))
+        val afterRound = service.handleRoundFinished(finished)
+        assertFalse(afterRound.gameOver)
+        val nextRound = service.processAction(player1Id, GameActionMessage(ActionType.START_NEXT_ROUND))
+        assertEquals(2, nextRound.roundNumber)
+        val expectedScores = nextRound.totalScores.associate { it.playerId to it.totalScore }
+
+        // Simulate a server restart: a fresh GameService over the same repository.
+        val restored = GameService(engine, repository).getCurrentState(player1Id)!!
+
+        assertEquals(2, restored.roundNumber)
+        assertEquals(expectedScores, restored.totalScores.associate { it.playerId to it.totalScore })
+    }
+
+    @Test
     fun `completed lobby game works when no lobby service is configured`() {
         service = GameService(engine, null)
         service.startGame("lobby-1", players, GameConfig(maxRounds = 1))

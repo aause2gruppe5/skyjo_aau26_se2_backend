@@ -34,6 +34,7 @@ import at.aau.se2.skyjo.model.PlayerScoreDto
 import at.aau.se2.skyjo.model.PlayActionCardMessageResult
 import at.aau.se2.skyjo.model.SlotType
 import at.aau.se2.skyjo.model.lobby.LobbyPlayer
+import at.aau.se2.skyjo.persistence.GameMeta
 import at.aau.se2.skyjo.persistence.GameRepository
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.stereotype.Service
@@ -87,14 +88,15 @@ class GameService @Autowired constructor(
     init {
         gameRepository?.loadActiveGames()?.forEach { persisted ->
             val playerIds = persisted.state.players.map { it.id }
+            val meta = persisted.meta
             val managedGame = ManagedGame(
                 gameId = persisted.gameId,
                 lobbyId = persisted.lobbyId,
                 gameState = persisted.state,
-                config = GameConfig(),
-                roundNumber = 1,
-                totalScores = playerIds.associateWith { 0 },
-                playerInfo = playerIds.associateWith { it },
+                config = meta?.config ?: GameConfig(),
+                roundNumber = meta?.roundNumber ?: 1,
+                totalScores = meta?.totalScores ?: playerIds.associateWith { 0 },
+                playerInfo = meta?.playerInfo ?: playerIds.associateWith { it },
             )
             games[managedGame.gameId] = managedGame
             playerIds.forEach { playerGameIndex[it] = managedGame.gameId }
@@ -166,7 +168,7 @@ class GameService @Autowired constructor(
 
             game.gameState = newRoundState
             resetCheatReportRound(game, newRoundState.currentPlayerId)
-            gameRepository?.saveGame(game.gameId, game.lobbyId, newRoundState)
+            persist(game, newRoundState)
 
             // Frühzeitig zurückkehren, restliche Zug-Logik überspringen
             return@withLock toUpdateMessage(game, newRoundState, gameOver = false)
@@ -234,7 +236,7 @@ class GameService @Autowired constructor(
         if (action.completesTurn()) {
             advanceCheatReportTurn(game, updatedState.currentPlayerId)
         }
-        gameRepository?.saveGame(game.gameId, game.lobbyId, updatedState)
+        persist(game, updatedState)
 
         if (updatedState.phase == GamePhase.ROUND_FINISHED) {
             return@withLock handleRoundFinished(game, updatedState)
@@ -263,7 +265,7 @@ class GameService @Autowired constructor(
         if (!startedPendingAction) {
             advanceCheatReportTurn(game, updatedState.currentPlayerId)
         }
-        gameRepository?.saveGame(game.gameId, game.lobbyId, updatedState)
+        persist(game, updatedState)
 
         val update = if (updatedState.phase == GamePhase.ROUND_FINISHED) {
             handleRoundFinished(game, updatedState)
@@ -300,7 +302,7 @@ class GameService @Autowired constructor(
         game.cheatPeekCounts[resolvedPlayerId] = updatedUsedPeeks
         game.playerCheatedThisTurn = true
         game.gameState = peekResult.state
-        gameRepository?.saveGame(game.gameId, game.lobbyId, peekResult.state)
+        persist(game, peekResult.state)
 
         CheatPeekResultMessage(
             card = toCardDto(peekResult.card),
@@ -441,7 +443,7 @@ class GameService @Autowired constructor(
 
         games[managedGame.gameId] = managedGame
         currentGameId = managedGame.gameId
-        gameRepository?.saveGame(managedGame.gameId, managedGame.lobbyId, newState)
+        persist(managedGame, newState)
         return toUpdateMessage(managedGame, newState, gameOver = false)
     }
 
@@ -461,7 +463,7 @@ class GameService @Autowired constructor(
 
         if (isGameOver) {
             game.completed = true
-            gameRepository?.saveGame(game.gameId, game.lobbyId, finishedState, completed = true)
+            persist(game, finishedState, completed = true)
             gameRepository?.deletePlayerSessionsForGame(game.gameId)
             game.lobbyId?.let { lobbyService?.closeLobby(it) }
             removePlayerIndexes(game)
@@ -469,7 +471,7 @@ class GameService @Autowired constructor(
             return toUpdateMessage(game, finishedState, gameOver = true)
         }
         //"Handbremse" zum anzeigen der Rundenergebnisse
-        gameRepository?.saveGame(game.gameId, game.lobbyId, finishedState)
+        persist(game, finishedState)
         return toUpdateMessage(game, finishedState, gameOver = false)
     }
 
@@ -540,6 +542,21 @@ class GameService @Autowired constructor(
         if (recordedStatsGameIds.add(game.gameId)) {
             statsService?.recordGameResult(game.gameId, game.totalScores)
         }
+    }
+
+    private fun persist(game: ManagedGame, state: GameState, completed: Boolean = false) {
+        gameRepository?.saveGame(
+            gameId = game.gameId,
+            lobbyId = game.lobbyId,
+            state = state,
+            completed = completed,
+            meta = GameMeta(
+                roundNumber = game.roundNumber,
+                totalScores = game.totalScores,
+                config = game.config,
+                playerInfo = game.playerInfo,
+            ),
+        )
     }
 
     private fun removePlayerIndexes(game: ManagedGame) {
